@@ -1,2 +1,2 @@
-Original pipeline from https://github.com/nedpeel/RevMet
-Rverse metagenomics to identify pollen samples. 
+Original pipeline from https://github.com/nedpeel/RevMet \
+Reverse metagenomics to identify pollen samples. \
