@@ -1,9 +1,9 @@
 
 basedir = "/home/carmoma/projects/pollen/revmet_paper_data/"
 params.ont = "$basedir/ena_files_nanopore/ERR3132323/mock_mixes_nanopore_reads/mock_mixes/barcode*.fastq"
-params.illumina = "$basedir/ena_files_illumina/cortados/*_R{1,2}*.fastq.gz"
+params.illumina = "$basedir/ena_files_illumina/*_R{1,2}*.fastq.gz"
 
-env.results_dir = "/home/carmoma/projects/pollen/myrevmet/resultados_test3"
+env.results_dir = "/home/carmoma/projects/pollen/myrevmet/resultados_full1"
 
 //One out of bwa, minimap2
 params.alignIllumina.program = "bwa"
