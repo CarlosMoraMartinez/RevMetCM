@@ -12,7 +12,7 @@ params.filterIlluminaAlignment.include_flag_f = 0
 params.filterIlluminaAlignment.exclude_flag_F = 2308 //read unmapped, not primary alignment, supplementary alignment
 params.filterIlluminaAlignment.mapq = 0
 
-params.countReadsPerReference.min_perc = 1.0
+params.countReadsPerReference.min_perc = 15.0
 params.countReadsPerReference.max_perc = 99.9
 params.countReadsPerReference.threshold_pct = 1.0
 
@@ -20,3 +20,5 @@ dag {
     enabled = true
     file = 'pipeline_dag.html'
 }
+
+cleanup = true

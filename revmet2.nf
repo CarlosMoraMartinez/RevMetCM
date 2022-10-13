@@ -32,9 +32,7 @@ process getIlluminaSampleList{
     shell:
     '''
     echo !{ill_names} | sed 's/, /\\n/g' | tr -d [] > skim_ref.ids
-
     '''
-
 }
 process makeFastaFromFastq {
     publishDir "$results_dir/2_makeFastaFromFastq", mode: 'symlink'
