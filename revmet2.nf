@@ -32,7 +32,7 @@ process getIlluminaSampleList{
     shell:
     '''
     touch skim_ref.ids
-    echo !{ill_names} | sed 's/, /\\n/g' | tr -d [] > skim_ref.ids
+    echo !{ill_names} | sed 's/, /\\n/g' | tr -d [] | cut -f 1 -d_ > skim_ref.ids
     '''
 }
 process makeFastaFromFastq {
@@ -46,7 +46,7 @@ process makeFastaFromFastq {
     shell:
     '''
     #Get fasta from nanopore fastq
-    outfile=$(basename -s .fastq !{ont_file})
+    outfile=$(basename -s .fastq.gz !{ont_file} | sed "s/_/-/g")
     seqtk seq -a !{ont_file} > $outfile'.fasta'
 
     '''
