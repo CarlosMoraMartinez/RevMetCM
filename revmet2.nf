@@ -31,6 +31,7 @@ process getIlluminaSampleList{
 
     shell:
     '''
+    touch skim_ref.ids
     echo !{ill_names} | sed 's/, /\\n/g' | tr -d [] > skim_ref.ids
     '''
 }
