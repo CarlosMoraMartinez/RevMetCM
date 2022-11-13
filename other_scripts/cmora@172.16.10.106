@@ -1,0 +1,35 @@
+import os
+import glob
+
+
+INDIR = "/scratch/groups/assembly/shared/projects/pollergen/data/illumina_genome_skim_EASI_48/*/*gz"
+OUTDIR = "/scratch/groups/assembly/shared/cmora/easi_illumina"
+
+def copy2outdir(sample, files, outdir):
+    for f in files:
+        try:
+            cmd = f"cp -v {f} {outdir}"
+            os.system(cmd)
+        except:
+            print(f"Unable to copy {f}") 
+            
+    r1 = [f for f in files if 'UMI.1.' in f]
+    r2 = [f.replace('UMI.1.', 'UMI.2.') for f in r1]
+def main():
+    try:
+        os.system(f"mkdir {OUTDIR}")
+    except:
+        print("Unable to create output directory")
+    try:
+        os.system(f"mkdir {OUTDIR}/merged")
+    except:
+        print("Unable to create output directory")
+    fnames = glob.glob(INDIR)
+    samples = set([os.path.basename(i).split(".")[0] for i in fnames])
+    samples = {s:[f for f in fnames if os.path.basename(f).startswith(s + '.')] for s in samples}
+    for k, v in samples.items():
+        copy2outdir(k, v, OUTDIR)
+    #mergeall(OUTDIR + "/merged")
+      
+if __name__ == "__main__":
+    main()
