@@ -157,7 +157,7 @@ process calculatePercentCovered{
       pcfile=$outfile'.pc'
 
       #Calculate percent coverage for each nanopore read
-      python /home/carmoma/projects/pollen/myrevmet/scripts/percent_coverage_from_depth_file.py !{depthfile} > $pcfile
+      python !{params.scriptsdir}percent_coverage_from_depth_file.py !{depthfile} > $pcfile
 
   '''
 
@@ -192,7 +192,7 @@ process binOntReadsToSpecies {
   #Bin each nanopore read to reference which has the highest pc
 
   outfile=$(basename -s .pc !{all_pcs})
-  python /home/carmoma/projects/pollen/myrevmet/scripts/minion_read_bin_from_perc_cov.py !{all_pcs} !{ont_ids}  > $outfile'.binned'
+  python !{params.scriptsdir}minion_read_bin_from_perc_cov.py !{all_pcs} !{ont_ids}  > $outfile'.binned'
 
   '''
 }
@@ -212,7 +212,7 @@ shell:
   #Count number of reads binned to each reference and calculate percentages
 
   outfile=$(basename -s .binned !{binned_reads})
-  python /home/carmoma/projects/pollen/myrevmet/scripts/minion_read_counts_and_pcts.py !{binned_reads} !{illumina_ids} $outfile'_bin_counts.tsv'  !{min_perc} !{max_perc} !{threshold_pct}
+  python !{params.scriptsdir}minion_read_counts_and_pcts.py !{binned_reads} !{illumina_ids} $outfile'_bin_counts.tsv'  !{min_perc} !{max_perc} !{threshold_pct}
   '''
 }
 
