@@ -22,6 +22,8 @@
   output_ch = Channel.empty()
 
 process getIlluminaSampleList{
+    cpus 1
+    memory '4 GB'
     publishDir "$results_dir/1_getIlluminaSampleList", mode: 'symlink'
     input:
     val ill_names
@@ -36,6 +38,8 @@ process getIlluminaSampleList{
     '''
 }
 process makeFastaFromFastq {
+    cpus 2
+    memory '8 GB'
     publishDir "$results_dir/2_makeFastaFromFastq", mode: 'symlink'
     input:
     path ont_file
@@ -54,6 +58,8 @@ process makeFastaFromFastq {
 }
 
 process getFastaIDs {
+    cpus 1
+    memory '4 GB'
     publishDir "$results_dir/3_getFastaIDs", mode: 'symlink'
 
     input:
@@ -73,6 +79,8 @@ process getFastaIDs {
 }
 
 process alignIllumina {
+  cpus 24
+  memory '48 GB'
   publishDir "$results_dir/4_alignIllumina", mode: 'symlink'
   input:
     tuple(path(ont_file), val(illumina_id), val(illumina_reads))
@@ -102,6 +110,8 @@ process alignIllumina {
 }
 
 process filterIlluminaAlignment{
+  cpus 12
+  memory '16 GB'
   publishDir "$results_dir/5_filterIlluminaAlignment", mode: 'symlink'
   input:
     path sam
@@ -119,13 +129,15 @@ process filterIlluminaAlignment{
       filtbam=$outfile'.bam'
 
       #Filter and sort sam alignment file then output as bam
-      samtools view -bu -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{sam} | samtools sort -o $filtbam
+      samtools view -@ 10 -bu -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{sam} | samtools sort -o $filtbam
       samtools index -c $filtbam
   '''
 
 }
 
 process getCoverage{
+  cpus 2
+  memory '8 GB'
   publishDir "$results_dir/6_getCoverage", mode: 'symlink'
   input:
     path bam
@@ -139,11 +151,13 @@ process getCoverage{
       samtoolsdepth=$outfile'.depth'
 
       #Get coverage at each position on each nanopore read
-      samtools depth -a !{bam} > $samtoolsdepth
+      samtools depth 10 -a !{bam} > $samtoolsdepth
   '''
 }
 
 process calculatePercentCovered{
+  cpus 2
+  memory '8 GB'
   publishDir "$results_dir/7_calculatePercentCovered", mode: 'symlink'
   input:
     path depthfile
@@ -164,6 +178,8 @@ process calculatePercentCovered{
 }
 
 process concatenatePC {
+  cpus 2
+  memory '8 GB'
   publishDir "$results_dir/8_concatenatePC", mode: 'symlink'
   input:
     tuple(val(ont_id), val(pcs))
@@ -182,6 +198,8 @@ process concatenatePC {
 }
 
 process binOntReadsToSpecies {
+  cpus 2
+  memory '8 GB'
   publishDir "$results_dir/9_binOntReadsToSpecies", mode: 'symlink'
   input:
     tuple(path(all_pcs), path(ont_ids))
@@ -198,6 +216,8 @@ process binOntReadsToSpecies {
 }
 
 process countReadsPerReference{
+  cpus 2
+  memory '8 GB'
   publishDir "$results_dir/10_countReadsPerReference", mode: 'symlink'
   input:
     path binned_reads
