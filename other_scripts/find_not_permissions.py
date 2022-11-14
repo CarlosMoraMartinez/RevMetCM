@@ -4,12 +4,14 @@ import glob
 INDIR = "/scratch/groups/assembly/shared/projects/pollergen/data/illumina_genome_skim_EASI_48/*/*gz"
 
 def copy2outdir(sample, files):
+    fo = open("bad_files.txt")
     for f in files:
         try:
             cmd = f"zcat {f} | head -1 > err.txt"
             os.system(cmd)
         except:
-            print(f"{sample}\t{f}") 
+            fo.write(f"{sample}\t{f}") 
+    fo.close()
     
 def main():
     fnames = glob.glob(INDIR)
