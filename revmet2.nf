@@ -87,7 +87,7 @@ process alignIllumina {
 
     
   output:
-    path('*_raw.sam')
+    path('*_raw.bam')
     
   shell:
   if( params.alignIllumina.program == 'minimap2' )
@@ -103,7 +103,7 @@ process alignIllumina {
         rawsam=$outfile'_raw.sam'
         
         bwa index !{ont_file}
-        bwa mem !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} > $rawsam
+        bwa mem !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} 
       '''
 
 
