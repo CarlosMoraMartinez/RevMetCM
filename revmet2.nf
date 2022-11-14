@@ -8,8 +8,6 @@
   ch_illumina = Channel
         .fromFilePairs(params.illumina)
         .view{"Input Illumina: $it"}
-  
-  //results_dir = Channel.value(params.results_dir).view{"Output dir: $it"}
 
   ch_illumina_samplelist = Channel.empty()
   ch_ont_fastq = Channel.empty()
@@ -22,8 +20,8 @@
   output_ch = Channel.empty()
 
 process getIlluminaSampleList{
-    cpus 1
-    memory '4 GB'
+    cpus params.resources.standard1.cpus
+    memory params.resources.standard1.mem
     publishDir "$results_dir/1_getIlluminaSampleList", mode: 'symlink'
     input:
     val ill_names
@@ -38,8 +36,8 @@ process getIlluminaSampleList{
     '''
 }
 process makeFastaFromFastq {
-    cpus 2
-    memory '8 GB'
+    cpus params.resources.standard2.cpus
+    memory params.resources.standard2.mem
     publishDir "$results_dir/2_makeFastaFromFastq", mode: 'symlink'
     input:
     path ont_file
@@ -58,8 +56,8 @@ process makeFastaFromFastq {
 }
 
 process getFastaIDs {
-    cpus 1
-    memory '4 GB'
+    cpus params.resources.standard1.cpus
+    memory params.resources.standard1.mem
     publishDir "$results_dir/3_getFastaIDs", mode: 'symlink'
 
     input:
@@ -78,13 +76,13 @@ process getFastaIDs {
 
 }
 
+
 process alignIllumina {
-  cpus 24
-  memory '48 GB'
+  cpus params.resources.alignment.cpus
+  memory params.resources.alignment.mem
   publishDir "$results_dir/4_alignIllumina", mode: 'symlink'
   input:
     tuple(path(ont_file), val(illumina_id), val(illumina_reads))
-
     
   output:
     path('*_raw.bam')
@@ -93,28 +91,26 @@ process alignIllumina {
   if( params.alignIllumina.program == 'minimap2' )
       '''
         outfile=$(basename -s .fasta !{ont_file})_!{illumina_id}
-        rawsam=$outfile'_raw.sam'
+        rawbam=$outfile'_raw.bam'
   
-        minimap2 -ax sr !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} > $rawsam
+        minimap2 -ax sr !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
       '''
   else if( params.alignIllumina.program == 'bwa' )
       '''
         outfile=$(basename -s .fasta !{ont_file})_!{illumina_id}
-        rawsam=$outfile'_raw.sam'
+        rawbam=$outfile'_raw.bam'
         
         bwa index !{ont_file}
-        bwa mem !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} 
+        bwa mem !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
       '''
-
-
 }
 
 process filterIlluminaAlignment{
-  cpus 12
-  memory '16 GB'
+    cpus params.resources.samtoolsfilter.cpus
+    memory params.resources.samtoolsfilter.mem
   publishDir "$results_dir/5_filterIlluminaAlignment", mode: 'symlink'
   input:
-    path sam
+    path bam
     val mapq
     val include_flag_f
     val exclude_flag_F
@@ -125,19 +121,19 @@ process filterIlluminaAlignment{
   shell:
 
   '''
-      outfile=$(basename -s _raw.sam !{sam})
+      outfile=$(basename -s _raw.bam !{bam})
       filtbam=$outfile'.bam'
 
       #Filter and sort sam alignment file then output as bam
-      samtools view -@ 10 -bu -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{sam} | samtools sort -o $filtbam
+      samtools view -@ 10 -bu -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{bam} | samtools sort -o $filtbam
       samtools index -c $filtbam
   '''
 
 }
 
 process getCoverage{
-  cpus 2
-  memory '8 GB'
+  cpus params.resources.standard2.cpus
+  memory params.resources.standard2.mem
   publishDir "$results_dir/6_getCoverage", mode: 'symlink'
   input:
     path bam
@@ -151,13 +147,13 @@ process getCoverage{
       samtoolsdepth=$outfile'.depth'
 
       #Get coverage at each position on each nanopore read
-      samtools depth 10 -a !{bam} > $samtoolsdepth
+      samtools depth -a !{bam} > $samtoolsdepth
   '''
 }
 
 process calculatePercentCovered{
-  cpus 2
-  memory '8 GB'
+  cpus params.resources.standard2.cpus
+  memory params.resources.standard2.mem
   publishDir "$results_dir/7_calculatePercentCovered", mode: 'symlink'
   input:
     path depthfile
@@ -178,8 +174,8 @@ process calculatePercentCovered{
 }
 
 process concatenatePC {
-  cpus 2
-  memory '8 GB'
+  cpus params.resources.standard2.cpus
+  memory params.resources.standard2.mem
   publishDir "$results_dir/8_concatenatePC", mode: 'symlink'
   input:
     tuple(val(ont_id), val(pcs))
@@ -198,8 +194,8 @@ process concatenatePC {
 }
 
 process binOntReadsToSpecies {
-  cpus 2
-  memory '8 GB'
+  cpus params.resources.standard2.cpus
+  memory params.resources.standard2.mem
   publishDir "$results_dir/9_binOntReadsToSpecies", mode: 'symlink'
   input:
     tuple(path(all_pcs), path(ont_ids))
@@ -216,8 +212,8 @@ process binOntReadsToSpecies {
 }
 
 process countReadsPerReference{
-  cpus 2
-  memory '8 GB'
+  cpus params.resources.standard2.cpus
+  memory params.resources.standard2.mem
   publishDir "$results_dir/10_countReadsPerReference", mode: 'symlink'
   input:
     path binned_reads
