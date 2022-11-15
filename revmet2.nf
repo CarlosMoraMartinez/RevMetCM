@@ -36,6 +36,7 @@ process getIlluminaSampleList{
     echo !{ill_names} | sed 's/, /\\n/g' | tr -d [] | cut -f 1 -d_ > skim_ref.ids
     '''
 }
+
 process makeFastaFromFastq {
     cpus params.resources.standard2.cpus
     memory params.resources.standard2.mem
@@ -56,7 +57,6 @@ process makeFastaFromFastq {
     '''
 
 }
-
 
 process getFastaIDs {
     cpus params.resources.standard1.cpus

@@ -14,4 +14,4 @@
 
 
 
-nextflow revmet2.nf -c conf_crg_mock_nofilt.config -profile conda -resume
+nextflow revmet2.nf -c conf_crg_mock1_nofilt.config -profile conda -resume
