@@ -11,6 +11,7 @@
 
   ch_illumina_samplelist = Channel.empty()
   ch_ont_fastq = Channel.empty()
+  ch_ont_index = Channel.empty()
   ch_ont_ids = Channel.empty()
   ch_aligned = Channel.empty()
   ch_pcs = Channel.empty()
@@ -43,17 +44,19 @@ process makeFastaFromFastq {
     path ont_file
     
     output:
-    path('*.fasta')
+    path('*.fasta.gz')
 
     shell:
     '''
     #Get fasta from nanopore fastq
     outfile=$(basename -s .fastq.gz !{ont_file} | sed "s/_/-/g")
     seqtk seq -a !{ont_file} > $outfile'.fasta'
+    gzip $outfile'.fasta'
 
     '''
 
 }
+
 
 process getFastaIDs {
     cpus params.resources.standard1.cpus
@@ -70,19 +73,38 @@ process getFastaIDs {
     shell:
     '''
     #Get list of nanopore read ids from nanopore fasta
-    outfile=$(basename -s .fastq !{fasta_file})
-    grep ">" !{fasta_file}  | sed 's/>//g' | cut -f 1 -d\\  > $outfile'.ids'
+    outfile=$(basename -s .fasta.gz !{fasta_file})
+    zgrep ">" !{fasta_file}  | sed 's/>//g' | cut -f 1 -d\\  > $outfile'.ids'
     '''
 
 }
 
+process IndexReferenceBwa {
+    cpus params.resources.standard1.cpus
+    memory params.resources.standard1.mem
+    publishDir "$results_dir/4_ont_index_bwa", mode: 'symlink'
+
+    input:
+    path fasta_file
+    
+    output:
+    tuple path("${fasta_file}"), path("${fasta_file}*")
+
+
+    shell:
+    '''
+    #Index nanopore fasta reference prior to alignment
+    #Note: this will happen even if minimap2 is used instead of bwa. Fix in the future.
+    bwa index !{fasta_file}
+    '''
+}
 
 process alignIllumina {
   cpus params.resources.alignment.cpus
   memory params.resources.alignment.mem
-  publishDir "$results_dir/4_alignIllumina", mode: 'symlink'
+  publishDir "$results_dir/5_alignIllumina", mode: 'symlink'
   input:
-    tuple(path(ont_file), val(illumina_id), val(illumina_reads))
+    tuple(val(ont_file), val(ont_index), val(illumina_id), val(illumina_reads))
     
   output:
     path('*_raw.bam')
@@ -97,10 +119,9 @@ process alignIllumina {
       '''
   else if( params.alignIllumina.program == 'bwa' )
       '''
-        outfile=$(basename -s .fasta !{ont_file})_!{illumina_id}
+        outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
         rawbam=$outfile'_raw.bam'
-        
-        bwa index !{ont_file}
+
         bwa mem !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
       '''
 }
@@ -108,7 +129,7 @@ process alignIllumina {
 process filterIlluminaAlignment{
     cpus params.resources.samtoolsfilter.cpus
     memory params.resources.samtoolsfilter.mem
-  publishDir "$results_dir/5_filterIlluminaAlignment", mode: 'symlink'
+  publishDir "$results_dir/6_filterIlluminaAlignment", mode: 'symlink'
   input:
     path bam
     val mapq
@@ -134,7 +155,7 @@ process filterIlluminaAlignment{
 process getCoverage{
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  publishDir "$results_dir/6_getCoverage", mode: 'symlink'
+  publishDir "$results_dir/7_getCoverage", mode: 'symlink'
   input:
     path bam
 
@@ -154,7 +175,7 @@ process getCoverage{
 process calculatePercentCovered{
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  publishDir "$results_dir/7_calculatePercentCovered", mode: 'symlink'
+  publishDir "$results_dir/8_calculatePercentCovered", mode: 'symlink'
   input:
     path depthfile
 
@@ -176,7 +197,7 @@ process calculatePercentCovered{
 process concatenatePC {
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  publishDir "$results_dir/8_concatenatePC", mode: 'symlink'
+  publishDir "$results_dir/9_concatenatePC", mode: 'symlink'
   input:
     tuple(val(ont_id), val(pcs))
 
@@ -196,7 +217,7 @@ process concatenatePC {
 process binOntReadsToSpecies {
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  publishDir "$results_dir/9_binOntReadsToSpecies", mode: 'symlink'
+  publishDir "$results_dir/10_binOntReadsToSpecies", mode: 'symlink'
   input:
     tuple(path(all_pcs), path(ont_ids))
   output:
@@ -214,7 +235,7 @@ process binOntReadsToSpecies {
 process countReadsPerReference{
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  publishDir "$results_dir/10_countReadsPerReference", mode: 'symlink'
+  publishDir "$results_dir/11_countReadsPerReference", mode: 'symlink'
   input:
     path binned_reads
     path illumina_ids
@@ -238,6 +259,10 @@ workflow {
   ch_ont_fastq = makeFastaFromFastq.out
   ch_ont_fastq.view{ "Fasta created from fastq: $it" }
 
+  IndexReferenceBwa(ch_ont_fastq)
+  ch_ont_index = IndexReferenceBwa.out
+  ch_ont_index.view{ "BWA index created from fasta: $it" }
+
   getFastaIDs(ch_ont_fastq)
   ch_ont_ids = getFastaIDs.out
   ch_ont_ids.view{ "Fasta ID list created from fasta: $it" }
@@ -250,11 +275,11 @@ workflow {
   getIlluminaSampleList(ch_illumina_samples)
   ch_illumina_samplelist=getIlluminaSampleList.out
 
-  ch_ont_fastq=ch_ont_fastq.combine(ch_illumina)
-    .view{ "ch_ont_fastq combined: $it" }
+  ch_ont_index=ch_ont_index.combine(ch_illumina)
+    .view{ "ch_ont_index combined: $it" }
   
   
-  alignIllumina(ch_ont_fastq) 
+  alignIllumina(ch_ont_index) 
   ch_aligned = alignIllumina.out.view{ "Alignment result: $it" }
   filterIlluminaAlignment(
     ch_aligned,
@@ -278,10 +303,10 @@ workflow {
   concatenatePC(ch_pcs)
   
   //Combine each nanopopre sample pc with its read ids
-  ch_pcs_all = concatenatePC.out.view()
+  ch_pcs_all = concatenatePC.out.view{ "concatenatePC result: $it" }
            .phase(ch_ont_ids) { it -> 
-              it.name.toString().replaceFirst(/_all.pc/, ".fasta.ids")
-            } .view{"Phase .pc and .fasta.ids: $it"}
+              it.name.toString().replaceFirst(/_all.pc/, ".ids")
+            }.view{"Phase .pc and .fasta.ids: $it"}
   binOntReadsToSpecies(ch_pcs_all)
   ch_binned = binOntReadsToSpecies.out.view{"binOntReadsToSpecies output: $it"}
   countReadsPerReference(ch_binned, 
