@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -J samples_nofilt
-#SBATCH -q normal
+#SBATCH -q eternal
 #SBATCH -D .
 #SBATCH -p genD
 #SBATCH -N 1
