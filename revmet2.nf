@@ -23,6 +23,8 @@
 process getIlluminaSampleList{
     cpus params.resources.standard1.cpus
     memory params.resources.standard1.mem
+    errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+    maxRetries 5
     publishDir "$results_dir/1_getIlluminaSampleList", mode: 'symlink'
     input:
     val ill_names
@@ -40,6 +42,8 @@ process getIlluminaSampleList{
 process makeFastaFromFastq {
     cpus params.resources.standard2.cpus
     memory params.resources.standard2.mem
+    errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+    maxRetries 5
     publishDir "$results_dir/2_makeFastaFromFastq", mode: 'symlink'
     input:
     path ont_file
@@ -62,7 +66,8 @@ process getFastaIDs {
     cpus params.resources.standard1.cpus
     memory params.resources.standard1.mem
     publishDir "$results_dir/3_getFastaIDs", mode: 'symlink'
-
+    errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+    maxRetries 5
     input:
     path fasta_file
     
@@ -82,6 +87,8 @@ process getFastaIDs {
 process IndexReferenceBwa {
     cpus params.resources.standard1.cpus
     memory params.resources.standard1.mem
+    errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+    maxRetries 5
     publishDir "$results_dir/4_ont_index_bwa", mode: 'symlink'
 
     input:
@@ -102,6 +109,8 @@ process IndexReferenceBwa {
 process alignIllumina {
   cpus params.resources.alignment.cpus
   memory params.resources.alignment.mem
+  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+  maxRetries 5
   publishDir "$results_dir/5_alignIllumina", mode: 'symlink'
   input:
     tuple(val(ont_file), val(ont_index), val(illumina_id), val(illumina_reads))
@@ -127,8 +136,10 @@ process alignIllumina {
 }
 
 process filterIlluminaAlignment{
-    cpus params.resources.samtoolsfilter.cpus
-    memory params.resources.samtoolsfilter.mem
+  cpus params.resources.samtoolsfilter.cpus
+  memory params.resources.samtoolsfilter.mem
+  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+  maxRetries 5
   publishDir "$results_dir/6_filterIlluminaAlignment", mode: 'symlink'
   input:
     path bam
@@ -155,6 +166,8 @@ process filterIlluminaAlignment{
 process getCoverage{
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
+  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+  maxRetries 5
   publishDir "$results_dir/7_getCoverage", mode: 'symlink'
   input:
     path bam
@@ -175,6 +188,8 @@ process getCoverage{
 process calculatePercentCovered{
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
+  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+  maxRetries 5
   publishDir "$results_dir/8_calculatePercentCovered", mode: 'symlink'
   input:
     path depthfile
@@ -197,6 +212,8 @@ process calculatePercentCovered{
 process concatenatePC {
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
+  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+  maxRetries 5
   publishDir "$results_dir/9_concatenatePC", mode: 'symlink'
   input:
     tuple(val(ont_id), val(pcs))
@@ -217,6 +234,8 @@ process concatenatePC {
 process binOntReadsToSpecies {
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
+  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+  maxRetries 5
   publishDir "$results_dir/10_binOntReadsToSpecies", mode: 'symlink'
   input:
     tuple(path(all_pcs), path(ont_ids))
@@ -235,6 +254,8 @@ process binOntReadsToSpecies {
 process countReadsPerReference{
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
+  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
+  maxRetries 5
   publishDir "$results_dir/11_countReadsPerReference", mode: 'symlink'
   input:
     path binned_reads
