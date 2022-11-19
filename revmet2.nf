@@ -168,19 +168,19 @@ process filterIlluminaAlignment{
   '''
 
 }
-
+//For now skipped, samtools depth performed in calculatePercentCovered and python script reads from stdin
 process getCoverage{
   label 'nf_07_dpth'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
   maxRetries 5
-  publishDir "$results_dir/7_getCoverage", mode: 'symlink'
+  publishDir "$results_dir/7_getCoverage", mode: 'copy'
   input:
     path bam
 
   output:
-    path('*.depth')
+    path('*.depth.gz')
 
   shell:
   '''
@@ -189,6 +189,7 @@ process getCoverage{
 
       #Get coverage at each position on each nanopore read
       samtools depth -a !{bam} > $samtoolsdepth
+      gzip $samtoolsdepth
   '''
 }
 
@@ -200,18 +201,18 @@ process calculatePercentCovered{
   maxRetries 5
   publishDir "$results_dir/8_calculatePercentCovered", mode: 'symlink'
   input:
-    path depthfile
+    path bam
 
   output:
     path '*.pc'
 
   shell:
   '''
-      outfile=$(basename -s .sam !{depthfile})
+      outfile=$(basename -s .bam !{bam})
       pcfile=$outfile'.pc'
 
       #Calculate percent coverage for each nanopore read
-      python !{params.scriptsdir}percent_coverage_from_depth_file.py !{depthfile} > $pcfile
+      samtools depth -a !{bam} | python !{params.scriptsdir}percent_coverage_from_depth_file.py -i stdin -f $pcfile > $pcfile
 
   '''
 
@@ -321,7 +322,7 @@ workflow {
     params.filterIlluminaAlignment.exclude_flag_F
   ) | 
   view{ "filterIlluminaAlignmentignment result: $it" } |
-  getCoverage | view{ "getCoverage result: $it" }  |
+  //getCoverage | view{ "getCoverage result: $it" }  |
   calculatePercentCovered | view { "calculatePercentCovered result: $it" }
   
   //Percent of each read that is covered by each species
