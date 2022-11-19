@@ -89,8 +89,8 @@ process getFastaIDs {
 
 process IndexReferenceBwa {
     label 'nf_04_idx'
-    cpus params.resources.standard1.cpus
-    memory params.resources.standard1.mem
+    cpus params.resources.index.cpus
+    memory params.resources.index.mem
     errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
     maxRetries 5
     publishDir "$results_dir/4_ont_index_bwa", mode: 'symlink'
@@ -163,7 +163,7 @@ process filterIlluminaAlignment{
       filtbam=$outfile'.bam'
 
       #Filter and sort sam alignment file then output as bam
-      samtools view -@ !{params.resources.samtoolsfilter.cpus} -bu -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{bam} | samtools sort -o $filtbam
+      samtools view -@ !{params.resources.samtoolsfilter.cpus} -b -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{bam} | samtools sort -o $filtbam
       samtools index $filtbam
   '''
 
@@ -212,7 +212,8 @@ process calculatePercentCovered{
       pcfile=$outfile'.pc'
 
       #Calculate percent coverage for each nanopore read
-      samtools depth -a !{bam} | python !{params.scriptsdir}percent_coverage_from_depth_file.py -i stdin -f $pcfile > $pcfile
+      samtools depth -a !{bam} | \\
+        python !{params.scriptsdir}percent_coverage_from_depth_file.py -i stdin -f $pcfile > $pcfile
 
   '''
 
