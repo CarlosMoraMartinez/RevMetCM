@@ -14,4 +14,4 @@
 
 
 
-nextflow revmet2.nf -c config/conf_crg_samples_nofilt.config -profile conda -resume
+nextflow run revmet2.nf -c config/conf_crg_samples_nofilt.config -profile conda -resume -with-report report.html

@@ -3,22 +3,22 @@
 
   ch_ont = Channel
         .fromPath(params.ont)
-        .view{"Input ONT: $it"}
+        //.view{"Input ONT: $it"}
 
   ch_illumina = Channel
         .fromFilePairs(params.illumina)
-        .view{"Input Illumina: $it"}
+        //.view{"Input Illumina: $it"}
 
-  ch_illumina_samplelist = Channel.empty()
-  ch_ont_fastq = Channel.empty()
-  ch_ont_index = Channel.empty()
-  ch_ont_ids = Channel.empty()
-  ch_aligned = Channel.empty()
-  ch_pcs = Channel.empty()
-  ch_pcs_all = Channel.empty()
-  ch_binned = Channel.empty()
-  ch_assigned = Channel.empty()
-  output_ch = Channel.empty()
+  //ch_illumina_samplelist = Channel.empty()
+  //ch_ont_fastq = Channel.empty()
+  //ch_ont_index = Channel.empty()
+  //ch_ont_ids = Channel.empty()
+  //ch_aligned = Channel.empty()
+  //ch_pcs = Channel.empty()
+  //ch_pcs_all = Channel.empty()
+  //ch_binned = Channel.empty()
+  //ch_assigned = Channel.empty()
+  //output_ch = Channel.empty()
 
 process getIlluminaSampleList{
     label 'nf_01_ilslst'
@@ -292,58 +292,66 @@ workflow {
 
   makeFastaFromFastq(ch_ont)
   ch_ont_fastq = makeFastaFromFastq.out
-  ch_ont_fastq.view{ "Fasta created from fastq: $it" }
+  ch_ont_fastq
+    //.view{ "Fasta created from fastq: $it" }
 
   IndexReferenceBwa(ch_ont_fastq)
   ch_ont_index = IndexReferenceBwa.out
-  ch_ont_index.view{ "BWA index created from fasta: $it" }
+  ch_ont_index
+    //.view{ "BWA index created from fasta: $it" }
 
   getFastaIDs(ch_ont_fastq)
   ch_ont_ids = getFastaIDs.out
-  ch_ont_ids.view{ "Fasta ID list created from fasta: $it" }
+  ch_ont_ids
+    //.view{ "Fasta ID list created from fasta: $it" }
 
-  ch_illumina_samples = ch_illumina.map{x ->
+  ch_illumina_samples = ch_illumina
+    .map{x ->
       def sname = x.get(0)
       return sname}
     .collect()
-    .view()
+    //.view()
   getIlluminaSampleList(ch_illumina_samples)
   ch_illumina_samplelist=getIlluminaSampleList.out
 
   ch_ont_index=ch_ont_index.combine(ch_illumina)
-    .view{ "ch_ont_index combined: $it" }
+    //.view{ "ch_ont_index combined: $it" }
   
   
   alignIllumina(ch_ont_index) 
-  ch_aligned = alignIllumina.out.view{ "Alignment result: $it" }
+  ch_aligned = alignIllumina.out
+    //.view{ "Alignment result: $it" }
   filterIlluminaAlignment(
     ch_aligned,
     params.filterIlluminaAlignment.mapq,
     params.filterIlluminaAlignment.include_flag_f,
     params.filterIlluminaAlignment.exclude_flag_F
   ) | 
-  view{ "filterIlluminaAlignmentignment result: $it" } |
+  //view{ "filterIlluminaAlignmentignment result: $it" } |
   //getCoverage | view{ "getCoverage result: $it" }  |
-  calculatePercentCovered | view { "calculatePercentCovered result: $it" }
+  calculatePercentCovered //| view { "calculatePercentCovered result: $it" }
   
   //Percent of each read that is covered by each species
-  ch_pcs = calculatePercentCovered.out.map{ file ->
+  ch_pcs = calculatePercentCovered.out
+    .map{ file ->
       def key = file.name.toString().tokenize('_').get(0)
       return tuple(key, file)
     }
     .groupTuple()
-    .view{ "calculatePercentCovered grouped by nanopore sample: $it" }
+    //.view{ "calculatePercentCovered grouped by nanopore sample: $it" }
 
   //Merge all pcs from one nanopore sample into one file
   concatenatePC(ch_pcs)
   
   //Combine each nanopopre sample pc with its read ids
-  ch_pcs_all = concatenatePC.out.view{ "concatenatePC result: $it" }
-           .phase(ch_ont_ids) { it -> 
-              it.name.toString().replaceFirst(/_all.pc/, ".ids")
-            }.view{"Phase .pc and .fasta.ids: $it"}
+  ch_pcs_all = concatenatePC.out
+    //.view{ "concatenatePC result: $it" }
+    .phase(ch_ont_ids) { it -> 
+      it.name.toString().replaceFirst(/_all.pc/, ".ids")
+    }
+    //.view{"Phase .pc and .fasta.ids: $it"}
   binOntReadsToSpecies(ch_pcs_all)
-  ch_binned = binOntReadsToSpecies.out.view{"binOntReadsToSpecies output: $it"}
+  ch_binned = binOntReadsToSpecies.out//.view{"binOntReadsToSpecies output: $it"}
   countReadsPerReference(ch_binned, 
                         ch_illumina_samplelist, 
                         params.countReadsPerReference.min_perc, 
