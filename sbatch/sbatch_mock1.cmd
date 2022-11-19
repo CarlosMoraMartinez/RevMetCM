@@ -12,6 +12,4 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=carlos.mora@cnag.crg.eu
 
-
-
 nextflow revmet2.nf -c config/conf_crg_mock1.config -profile conda -resume

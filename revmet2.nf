@@ -24,8 +24,8 @@ process getIlluminaSampleList{
     label 'nf_01_ilslst'
     cpus params.resources.standard1.cpus
     memory params.resources.standard1.mem
-    errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-    maxRetries 5
+    errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
+    maxRetries 10
     publishDir "$results_dir/1_getIlluminaSampleList"
     input:
     val ill_names
@@ -44,8 +44,8 @@ process makeFastaFromFastq {
     label 'nf_02_gtfa'
     cpus params.resources.standard2.cpus
     memory params.resources.standard2.mem
-    errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-    maxRetries 5
+    errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+    maxRetries 10
     publishDir "$results_dir/2_makeFastaFromFastq", mode: 'symlink'
     input:
     path ont_file
@@ -69,8 +69,8 @@ process getFastaIDs {
     cpus params.resources.standard1.cpus
     memory params.resources.standard1.mem
     publishDir "$results_dir/3_getFastaIDs", mode: 'symlink'
-    errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-    maxRetries 5
+    errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+    maxRetries 10
     input:
     path fasta_file
     
@@ -91,8 +91,8 @@ process IndexReferenceBwa {
     label 'nf_04_idx'
     cpus params.resources.index.cpus
     memory params.resources.index.mem
-    errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-    maxRetries 5
+    errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+    maxRetries 10
     publishDir "$results_dir/4_ont_index_bwa", mode: 'symlink'
 
     input:
@@ -114,8 +114,8 @@ process alignIllumina {
   label 'nf_05_algn'
   cpus params.resources.alignment.cpus
   memory params.resources.alignment.mem
-  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-  maxRetries 5
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
+  maxRetries 10
   publishDir "$results_dir/5_alignIllumina", mode: 'symlink'
   input:
     tuple(val(ont_file), val(ont_index), val(illumina_id), val(illumina_reads))
@@ -144,8 +144,8 @@ process filterIlluminaAlignment{
   label 'nf_06_smflt'
   cpus params.resources.samtoolsfilter.cpus
   memory params.resources.samtoolsfilter.mem
-  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-  maxRetries 5
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  maxRetries 10
   publishDir "$results_dir/6_filterIlluminaAlignment", mode: 'symlink'
   input:
     path bam
@@ -173,8 +173,8 @@ process getCoverage{
   label 'nf_07_dpth'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-  maxRetries 5
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
+  maxRetries 10
   publishDir "$results_dir/7_getCoverage", mode: 'copy'
   input:
     path bam
@@ -197,8 +197,8 @@ process calculatePercentCovered{
   label 'nf_08_pccov'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-  maxRetries 5
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  maxRetries 10
   publishDir "$results_dir/8_calculatePercentCovered", mode: 'symlink'
   input:
     path bam
@@ -223,8 +223,8 @@ process concatenatePC {
    label 'nf_09_catpc'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-  maxRetries 5
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  maxRetries 10
   publishDir "$results_dir/9_concatenatePC", mode: 'copy'
   input:
     tuple(val(ont_id), val(pcs))
@@ -247,8 +247,8 @@ process binOntReadsToSpecies {
   label 'nf_10_br2sp'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-  maxRetries 5
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  maxRetries 10
   publishDir "$results_dir/10_binOntReadsToSpecies", mode: 'copy'
   input:
     tuple(path(all_pcs), path(ont_ids))
@@ -268,8 +268,8 @@ process countReadsPerReference{
   label 'nf_11_crpr'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
-  maxRetries 5
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  maxRetries 10
   storeDir "$results_dir/11_countReadsPerReference"
   input:
     path binned_reads
