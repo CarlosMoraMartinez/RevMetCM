@@ -21,11 +21,12 @@
   output_ch = Channel.empty()
 
 process getIlluminaSampleList{
+    label 'nf_01_ilslst'
     cpus params.resources.standard1.cpus
     memory params.resources.standard1.mem
     errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
     maxRetries 5
-    publishDir "$results_dir/1_getIlluminaSampleList", mode: 'symlink'
+    publishDir "$results_dir/1_getIlluminaSampleList"
     input:
     val ill_names
     
@@ -40,6 +41,7 @@ process getIlluminaSampleList{
 }
 
 process makeFastaFromFastq {
+    label 'nf_02_gtfa'
     cpus params.resources.standard2.cpus
     memory params.resources.standard2.mem
     errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
@@ -63,6 +65,7 @@ process makeFastaFromFastq {
 }
 
 process getFastaIDs {
+    label 'nf_03_fids'
     cpus params.resources.standard1.cpus
     memory params.resources.standard1.mem
     publishDir "$results_dir/3_getFastaIDs", mode: 'symlink'
@@ -85,6 +88,7 @@ process getFastaIDs {
 }
 
 process IndexReferenceBwa {
+    label 'nf_04_idx'
     cpus params.resources.standard1.cpus
     memory params.resources.standard1.mem
     errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
@@ -107,6 +111,7 @@ process IndexReferenceBwa {
 }
 
 process alignIllumina {
+  label 'nf_05_algn'
   cpus params.resources.alignment.cpus
   memory params.resources.alignment.mem
   errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
@@ -136,6 +141,7 @@ process alignIllumina {
 }
 
 process filterIlluminaAlignment{
+  label 'nf_06_smflt'
   cpus params.resources.samtoolsfilter.cpus
   memory params.resources.samtoolsfilter.mem
   errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
@@ -158,12 +164,13 @@ process filterIlluminaAlignment{
 
       #Filter and sort sam alignment file then output as bam
       samtools view -@ !{params.resources.samtoolsfilter.cpus} -bu -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{bam} | samtools sort -o $filtbam
-      samtools index -c $filtbam
+      samtools index $filtbam
   '''
 
 }
 
 process getCoverage{
+  label 'nf_07_dpth'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
@@ -186,6 +193,7 @@ process getCoverage{
 }
 
 process calculatePercentCovered{
+  label 'nf_08_pccov'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
@@ -210,11 +218,12 @@ process calculatePercentCovered{
 }
 
 process concatenatePC {
+   label 'nf_09_catpc'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
   maxRetries 5
-  publishDir "$results_dir/9_concatenatePC", mode: 'symlink'
+  publishDir "$results_dir/9_concatenatePC", mode: 'copy'
   input:
     tuple(val(ont_id), val(pcs))
 
@@ -225,6 +234,7 @@ process concatenatePC {
   '''
   for pc in !{pcs}
   do
+    echo $pc >> TMP.TXT
     pc=$(tr -d ,[] <<<$pc )
     cat $pc >> !{ont_id}_all.pc
   done
@@ -232,11 +242,12 @@ process concatenatePC {
 }
 
 process binOntReadsToSpecies {
+  label 'nf_10_br2sp'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
   maxRetries 5
-  publishDir "$results_dir/10_binOntReadsToSpecies", mode: 'symlink'
+  publishDir "$results_dir/10_binOntReadsToSpecies", mode: 'copy'
   input:
     tuple(path(all_pcs), path(ont_ids))
   output:
@@ -252,11 +263,12 @@ process binOntReadsToSpecies {
 }
 
 process countReadsPerReference{
+  label 'nf_11_crpr'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 119..120 ? 'retry' : 'terminate' }
   maxRetries 5
-  publishDir "$results_dir/11_countReadsPerReference", mode: 'symlink'
+  storeDir "$results_dir/11_countReadsPerReference"
   input:
     path binned_reads
     path illumina_ids
@@ -268,7 +280,7 @@ process countReadsPerReference{
 shell:
   '''
   #Count number of reads binned to each reference and calculate percentages
-
+  echo !{binned_reads} >> TMP.TXT
   outfile=$(basename -s .binned !{binned_reads})
   python !{params.scriptsdir}minion_read_counts_and_pcts.py !{binned_reads} !{illumina_ids} $outfile'_bin_counts.tsv'  !{min_perc} !{max_perc} !{threshold_pct}
   '''
