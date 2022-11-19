@@ -131,7 +131,7 @@ process alignIllumina {
         outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
         rawbam=$outfile'_raw.bam'
 
-        bwa mem !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
+        bwa mem -t !{params.resources.alignment.cpus} !{params.alignIllumina.bwaparams} !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
       '''
 }
 
@@ -157,7 +157,7 @@ process filterIlluminaAlignment{
       filtbam=$outfile'.bam'
 
       #Filter and sort sam alignment file then output as bam
-      samtools view -@ 10 -bu -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{bam} | samtools sort -o $filtbam
+      samtools view -@ !{params.resources.samtoolsfilter.cpus} -bu -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{bam} | samtools sort -o $filtbam
       samtools index -c $filtbam
   '''
 
