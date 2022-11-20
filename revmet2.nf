@@ -236,7 +236,6 @@ process concatenatePC {
   '''
   for pc in !{pcs}
   do
-    echo $pc >> TMP.TXT
     pc=$(tr -d ,[] <<<$pc )
     cat $pc >> !{ont_id}_all.pc
   done
@@ -282,7 +281,6 @@ process countReadsPerReference{
 shell:
   '''
   #Count number of reads binned to each reference and calculate percentages
-  echo !{binned_reads} >> TMP.TXT
   outfile=$(basename -s .binned !{binned_reads})
   python !{params.scriptsdir}minion_read_counts_and_pcts.py !{binned_reads} !{illumina_ids} $outfile'_bin_counts.tsv'  !{min_perc} !{max_perc} !{threshold_pct}
   '''
