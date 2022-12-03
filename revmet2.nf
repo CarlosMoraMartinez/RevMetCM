@@ -1,10 +1,10 @@
 #!/usr/bin/env nextflow
 
-  ch_ont = Channel
+ch_ont = Channel
         .fromPath(params.ont)
         //.view{"Input ONT: $it"}
 
-  ch_illumina = Channel
+ch_illumina = Channel
         .fromFilePairs(params.illumina)
         //.view{"Input Illumina: $it"}
 
@@ -36,6 +36,7 @@ process filterOntReads {
     errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
     maxRetries 10
     publishDir "$results_dir/2_filterOntReads-l$min_length-q$min_mean_q", mode: 'copy'
+    
     input:
     path ont_file
     val min_length
@@ -49,7 +50,6 @@ process filterOntReads {
     #Get fasta from nanopore fastq
     outfile=$(basename -s .fastq.gz !{ont_file} | sed "s/_/-/g")
     filtlong --min_length !{min_length} --min_mean_q !{min_mean_q} !{ont_file} | gzip > $outfile'.trim.fastq.gz'
-
     '''
 
 }
@@ -61,6 +61,7 @@ process makeFastaFromFastq {
     errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
     maxRetries 10
     publishDir "$results_dir/3_makeFastaFromFastq", mode: 'symlink'
+    
     input:
     path ont_file
     
@@ -82,6 +83,7 @@ process getFastaIDs {
     publishDir "$results_dir/4_getFastaIDs", mode: 'symlink'
     errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
     maxRetries 10
+    
     input:
     path fasta_file
     
@@ -95,7 +97,6 @@ process getFastaIDs {
     outfile=$(basename -s .fasta.gz !{fasta_file})
     zgrep ">" !{fasta_file}  | sed 's/>//g' | cut -f 1 -d\\  > $outfile'.ids'
     '''
-
 }
 
 process indexReferenceBwa {
@@ -122,105 +123,107 @@ process indexReferenceBwa {
 }
 
 process alignIllumina {
-  label 'nf_06_algn'
-  cpus params.resources.alignment.cpus
-  memory params.resources.alignment.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
-  maxRetries 10
-  publishDir "$results_dir/6_alignIllumina", mode: 'symlink'
-  input:
-    tuple(val(ont_file), val(ont_index), val(illumina_id), val(illumina_reads))
-    
-  output:
-    path('*_raw.bam')
-    
-  shell:
-  if( params.alignIllumina.program == 'minimap2' )
-      '''
-        outfile=$(basename -s .fasta !{ont_file})_!{illumina_id}
-        rawbam=$outfile'_raw.bam'
-  
-        minimap2 -ax sr !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
-      '''
-  else if( params.alignIllumina.program == 'bwa' )
-      '''
-        outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
-        rawbam=$outfile'_raw.bam'
+    label 'nf_06_algn'
+    cpus params.resources.alignment.cpus
+    memory params.resources.alignment.mem
+    errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
+    maxRetries 10
+    publishDir "$results_dir/6_alignIllumina", mode: 'symlink'
 
-        bwa mem -t !{params.resources.alignment.cpus} !{params.alignIllumina.bwaparams} !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
+    input:
+      tuple(val(ont_file), val(ont_index), val(illumina_id), val(illumina_reads))
+
+    output:
+      path('*_raw.bam')
+
+    shell:
+    if( params.alignIllumina.program == 'minimap2' )
+      '''
+      outfile=$(basename -s .fasta !{ont_file})_!{illumina_id}
+      rawbam=$outfile'_raw.bam'
+
+      minimap2 -ax sr !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
+      '''
+    else if( params.alignIllumina.program == 'bwa' )
+      '''
+      outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
+      rawbam=$outfile'_raw.bam'
+
+      bwa mem -t !{params.resources.alignment.cpus} !{params.alignIllumina.bwaparams} !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
       '''
 }
 
 process filterIlluminaAlignment{
-  label 'nf_07_smflt'
-  cpus params.resources.samtoolsfilter.cpus
-  memory params.resources.samtoolsfilter.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
-  publishDir "$results_dir/7_filterIlluminaAlignment-F$exclude_flag_F-q$mapq", mode: 'symlink'
-  input:
-    path bam
-    val mapq
-    val include_flag_f
-    val exclude_flag_F
+    label 'nf_07_smflt'
+    cpus params.resources.samtoolsfilter.cpus
+    memory params.resources.samtoolsfilter.mem
+    errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+    maxRetries 10
+    publishDir "$results_dir/7_filterIlluminaAlignment-F$exclude_flag_F-q$mapq", mode: 'symlink'
 
-  output:
-    path('*.filt.bam')
+    input:
+      path bam
+      val mapq
+      val include_flag_f
+      val exclude_flag_F
 
-  shell:
+    output:
+      path('*.filt.bam')
 
-  '''
-      outfile=$(basename -s _raw.bam !{bam})
-      filtbam=$outfile'.filt.bam'
+    shell:
+    '''
+    outfile=$(basename -s _raw.bam !{bam})
+    filtbam=$outfile'.filt.bam'
 
-      #Filter and sort sam alignment file then output as bam
-      samtools view -@ !{params.resources.samtoolsfilter.cpus} -b -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{bam} | samtools sort -o $filtbam
-      samtools index $filtbam
-  '''
-
+    #Filter and sort sam alignment file then output as bam
+    samtools view -@ !{params.resources.samtoolsfilter.cpus} -b -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{bam} | samtools sort -o $filtbam
+    samtools index $filtbam
+    '''
 }
 
 process getCoverage{
-  label 'nf_08_dpth'
-  cpus params.resources.standard2.cpus
-  memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
-  maxRetries 10
-  publishDir "$results_dir/8_getCoverage", mode: 'symlink'
-  input:
-    path bam
+    label 'nf_08_dpth'
+    cpus params.resources.standard2.cpus
+    memory params.resources.standard2.mem
+    errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
+    maxRetries 10
+    publishDir "$results_dir/8_getCoverage", mode: 'symlink'
+    
+    input:
+      path bam
 
-  output:
-    path('*.depth.gz')
+    output:
+      path('*.depth.gz')
 
-  shell:
-  '''
-      outfile=$(basename -s .bam !{bam})
-      samtoolsdepth=$outfile'.depth.gz'
+    shell:
+    '''
+    outfile=$(basename -s .bam !{bam})
+    samtoolsdepth=$outfile'.depth.gz'
 
-      #Get coverage at each position on each nanopore read
-      samtools coverage --ff 0 !{bam} | gzip > $samtoolsdepth
+    #Get coverage at each position on each nanopore read
+    samtools coverage --ff 0 !{bam} | gzip > $samtoolsdepth
   '''
 }
 
 process mergeAndBin2species {
-  label 'nf_09_bin2sp'
-  conda params.mergeAndBin2species.conda
-  cpus params.resources.mergeandbin2species.cpus
-  memory params.resources.mergeandbin2species.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
-  storeDir "$results_dir/9_MergeAndBin"
-  input:
-    tuple(val(ont_id), path(pcs))
+    label 'nf_09_bin2sp'
+    conda params.mergeAndBin2species.conda
+    cpus params.resources.mergeandbin2species.cpus
+    memory params.resources.mergeandbin2species.mem
+    errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+    maxRetries 10
+    storeDir "$results_dir/9_MergeAndBin"
 
-  output:
-    path "${ont_id}_all.csv"
+    input:
+      tuple(val(ont_id), path(pcs))
 
-  shell:
-  '''
-      python !{params.scriptsdir}/merge_coverages.py  -n !{params.resources.standard2.cpus} -p !{ont_id}
-  '''
+    output:
+      path "${ont_id}_all.csv"
+
+    shell:
+    '''
+    python !{params.scriptsdir}/merge_coverages.py  -n !{params.resources.standard2.cpus} -p !{ont_id}
+    '''
 }
 
 workflow {
