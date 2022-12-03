@@ -1,6 +1,5 @@
 #!/usr/bin/env nextflow
 
-
   ch_ont = Channel
         .fromPath(params.ont)
         //.view{"Input ONT: $it"}
@@ -8,17 +7,6 @@
   ch_illumina = Channel
         .fromFilePairs(params.illumina)
         //.view{"Input Illumina: $it"}
-
-  //ch_illumina_samplelist = Channel.empty()
-  //ch_ont_fastq = Channel.empty()
-  //ch_ont_index = Channel.empty()
-  //ch_ont_ids = Channel.empty()
-  //ch_aligned = Channel.empty()
-  //ch_pcs = Channel.empty()
-  //ch_pcs_all = Channel.empty()
-  //ch_binned = Channel.empty()
-  //ch_assigned = Channel.empty()
-  //output_ch = Channel.empty()
 
 process getIlluminaSampleList{
     label 'nf_01_ilslst'
@@ -40,13 +28,39 @@ process getIlluminaSampleList{
     '''
 }
 
-process makeFastaFromFastq {
-    label 'nf_02_gtfa'
+process filterOntReads {
+    label 'nf_02_flng'
+    conda params.filterOntReads.conda
     cpus params.resources.standard2.cpus
     memory params.resources.standard2.mem
     errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
     maxRetries 10
-    publishDir "$results_dir/2_makeFastaFromFastq", mode: 'symlink'
+    publishDir "$results_dir/2_filterOntReads-l$min_length-q$min_mean_q", mode: 'copy'
+    input:
+    path ont_file
+    val min_length
+    val min_mean_q
+    
+    output:
+    path('*.fastq.gz')
+
+    shell:
+    '''
+    #Get fasta from nanopore fastq
+    outfile=$(basename -s .fastq.gz !{ont_file} | sed "s/_/-/g")
+    filtlong --min_length !{min_length} --min_mean_q !{min_mean_q} !{ont_file} | gzip > $outfile'.trim.fastq.gz'
+
+    '''
+
+}
+
+process makeFastaFromFastq {
+    label 'nf_03_gtfa'
+    cpus params.resources.standard1.cpus
+    memory params.resources.standard1.mem
+    errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+    maxRetries 10
+    publishDir "$results_dir/3_makeFastaFromFastq", mode: 'symlink'
     input:
     path ont_file
     
@@ -57,18 +71,15 @@ process makeFastaFromFastq {
     '''
     #Get fasta from nanopore fastq
     outfile=$(basename -s .fastq.gz !{ont_file} | sed "s/_/-/g")
-    seqtk seq -a !{ont_file} > $outfile'.fasta'
-    gzip $outfile'.fasta'
-
+    seqtk seq -a !{ont_file} | gzip > $outfile'.fasta.gz'
     '''
-
 }
 
 process getFastaIDs {
-    label 'nf_03_fids'
+    label 'nf_04_fids'
     cpus params.resources.standard1.cpus
     memory params.resources.standard1.mem
-    publishDir "$results_dir/3_getFastaIDs", mode: 'symlink'
+    publishDir "$results_dir/4_getFastaIDs", mode: 'symlink'
     errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
     maxRetries 10
     input:
@@ -87,13 +98,13 @@ process getFastaIDs {
 
 }
 
-process IndexReferenceBwa {
-    label 'nf_04_idx'
+process indexReferenceBwa {
+    label 'nf_05_idx'
     cpus params.resources.index.cpus
     memory params.resources.index.mem
     errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
     maxRetries 10
-    publishDir "$results_dir/4_ont_index_bwa", mode: 'symlink'
+    publishDir "$results_dir/5_ont_index_bwa", mode: 'symlink'
 
     input:
     path fasta_file
@@ -111,12 +122,12 @@ process IndexReferenceBwa {
 }
 
 process alignIllumina {
-  label 'nf_05_algn'
+  label 'nf_06_algn'
   cpus params.resources.alignment.cpus
   memory params.resources.alignment.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
   maxRetries 10
-  publishDir "$results_dir/5_alignIllumina", mode: 'symlink'
+  publishDir "$results_dir/6_alignIllumina", mode: 'symlink'
   input:
     tuple(val(ont_file), val(ont_index), val(illumina_id), val(illumina_reads))
     
@@ -141,12 +152,12 @@ process alignIllumina {
 }
 
 process filterIlluminaAlignment{
-  label 'nf_06_smflt'
+  label 'nf_07_smflt'
   cpus params.resources.samtoolsfilter.cpus
   memory params.resources.samtoolsfilter.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/6_filterIlluminaAlignment", mode: 'symlink'
+  publishDir "$results_dir/7_filterIlluminaAlignment-F$exclude_flag_F-q$mapq", mode: 'symlink'
   input:
     path bam
     val mapq
@@ -154,13 +165,13 @@ process filterIlluminaAlignment{
     val exclude_flag_F
 
   output:
-    path('*.bam')
+    path('*.filt.bam')
 
   shell:
 
   '''
       outfile=$(basename -s _raw.bam !{bam})
-      filtbam=$outfile'.bam'
+      filtbam=$outfile'.filt.bam'
 
       #Filter and sort sam alignment file then output as bam
       samtools view -@ !{params.resources.samtoolsfilter.cpus} -b -F !{exclude_flag_F} -f !{include_flag_f} -q !{mapq} !{bam} | samtools sort -o $filtbam
@@ -168,14 +179,14 @@ process filterIlluminaAlignment{
   '''
 
 }
-//For now skipped, samtools depth performed in calculatePercentCovered and python script reads from stdin
+
 process getCoverage{
-  label 'nf_07_dpth'
+  label 'nf_08_dpth'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
   maxRetries 10
-  publishDir "$results_dir/7_getCoverage", mode: 'copy'
+  publishDir "$results_dir/8_getCoverage", mode: 'symlink'
   input:
     path bam
 
@@ -185,123 +196,51 @@ process getCoverage{
   shell:
   '''
       outfile=$(basename -s .bam !{bam})
-      samtoolsdepth=$outfile'.depth'
+      samtoolsdepth=$outfile'.depth.gz'
 
       #Get coverage at each position on each nanopore read
-      samtools depth -a !{bam} > $samtoolsdepth
-      gzip $samtoolsdepth
+      samtools coverage --ff 0 !{bam} | gzip > $samtoolsdepth
   '''
 }
 
-process calculatePercentCovered{
-  label 'nf_08_pccov'
-  cpus params.resources.standard2.cpus
-  memory params.resources.standard2.mem
+process mergeAndBin2species {
+  label 'nf_09_bin2sp'
+  conda params.mergeAndBin2species.conda
+  cpus params.resources.mergeandbin2species.cpus
+  memory params.resources.mergeandbin2species.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/8_calculatePercentCovered", mode: 'symlink'
+  storeDir "$results_dir/9_MergeAndBin"
   input:
-    path bam
+    tuple(val(ont_id), path(pcs))
 
   output:
-    path '*.pc'
+    path "${ont_id}_all.csv"
 
   shell:
   '''
-      outfile=$(basename -s .bam !{bam})
-      pcfile=$outfile'.pc'
-
-      #Calculate percent coverage for each nanopore read
-      samtools depth -a !{bam} | \\
-        python !{params.scriptsdir}percent_coverage_from_depth_file.py -i stdin -f $pcfile > $pcfile
-
-  '''
-
-}
-
-process concatenatePC {
-   label 'nf_09_catpc'
-  cpus params.resources.standard2.cpus
-  memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
-  publishDir "$results_dir/9_concatenatePC", mode: 'copy'
-  input:
-    tuple(val(ont_id), val(pcs))
-
-  output:
-    path "${ont_id}_all.pc"
-
-  shell:
-  '''
-  for pc in !{pcs}
-  do
-    pc=$(tr -d ,[] <<<$pc )
-    cat $pc >> !{ont_id}_all.pc
-  done
-  '''
-}
-
-process binOntReadsToSpecies {
-  label 'nf_10_br2sp'
-  cpus params.resources.standard2.cpus
-  memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
-  publishDir "$results_dir/10_binOntReadsToSpecies", mode: 'copy'
-  input:
-    tuple(path(all_pcs), path(ont_ids))
-  output:
-    path "*.binned"
-  shell:
-  '''
-  #Bin each nanopore read to reference which has the highest pc
-
-  outfile=$(basename -s .pc !{all_pcs})
-  python !{params.scriptsdir}minion_read_bin_from_perc_cov.py !{all_pcs} !{ont_ids}  > $outfile'.binned'
-
-  '''
-}
-
-process countReadsPerReference{
-  label 'nf_11_crpr'
-  cpus params.resources.standard2.cpus
-  memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
-  storeDir "$results_dir/11_countReadsPerReference"
-  input:
-    path binned_reads
-    path illumina_ids
-    val min_perc
-    val max_perc
-    val threshold_pct
-  output:
-    file "*_bin_counts.tsv"
-shell:
-  '''
-  #Count number of reads binned to each reference and calculate percentages
-  outfile=$(basename -s .binned !{binned_reads})
-  python !{params.scriptsdir}minion_read_counts_and_pcts.py !{binned_reads} !{illumina_ids} $outfile'_bin_counts.tsv'  !{min_perc} !{max_perc} !{threshold_pct}
+      python !{params.scriptsdir}/merge_coverages.py  -n !{params.resources.standard2.cpus} -p !{ont_id}
   '''
 }
 
 workflow {
 
-  makeFastaFromFastq(ch_ont)
+  if(params.filterOntReads.do_filter){
+    filterOntReads(ch_ont, params.filterOntReads.min_length, params.filterOntReads.min_mean_q) |
+    makeFastaFromFastq
+  }else{
+    makeFastaFromFastq(ch_ont)
+  }
   ch_ont_fastq = makeFastaFromFastq.out
-  ch_ont_fastq
-    //.view{ "Fasta created from fastq: $it" }
+  //ch_ont_fastq.view{ "Fasta created from fastq: $it" }
 
-  IndexReferenceBwa(ch_ont_fastq)
-  ch_ont_index = IndexReferenceBwa.out
-  ch_ont_index
-    //.view{ "BWA index created from fasta: $it" }
+  indexReferenceBwa(ch_ont_fastq)
+  ch_ont_index = indexReferenceBwa.out
+  //ch_ont_index.view{ "BWA index created from fasta: $it" }
 
   getFastaIDs(ch_ont_fastq)
   ch_ont_ids = getFastaIDs.out
-  ch_ont_ids
-    //.view{ "Fasta ID list created from fasta: $it" }
+  //ch_ont_ids.view{ "Fasta ID list created from fasta: $it" }
 
   ch_illumina_samples = ch_illumina
     .map{x ->
@@ -311,10 +250,10 @@ workflow {
     //.view()
   getIlluminaSampleList(ch_illumina_samples)
   ch_illumina_samplelist=getIlluminaSampleList.out
+  //.view{ "Illumina sample list: $it" }
 
   ch_ont_index=ch_ont_index.combine(ch_illumina)
     //.view{ "ch_ont_index combined: $it" }
-  
   
   alignIllumina(ch_ont_index) 
   ch_aligned = alignIllumina.out
@@ -326,35 +265,19 @@ workflow {
     params.filterIlluminaAlignment.exclude_flag_F
   ) | 
   //view{ "filterIlluminaAlignmentignment result: $it" } |
-  //getCoverage | view{ "getCoverage result: $it" }  |
-  calculatePercentCovered //| view { "calculatePercentCovered result: $it" }
-  
-  //Percent of each read that is covered by each species
-  ch_pcs = calculatePercentCovered.out
+  getCoverage 
+  //| view{ "getCoverage result: $it" } 
+
+  ch_pcs = getCoverage.out
     .map{ file ->
       def key = file.name.toString().tokenize('_').get(0)
       return tuple(key, file)
     }
     .groupTuple()
-    //.view{ "calculatePercentCovered grouped by nanopore sample: $it" }
+  .view{ "getCoverage grouped by nanopore sample: $it" }
 
   //Merge all pcs from one nanopore sample into one file
-  concatenatePC(ch_pcs)
-  
-  //Combine each nanopopre sample pc with its read ids
-  ch_pcs_all = concatenatePC.out
-    //.view{ "concatenatePC result: $it" }
-    .phase(ch_ont_ids) { it -> 
-      it.name.toString().replaceFirst(/_all.pc/, ".ids")
-    }
-    //.view{"Phase .pc and .fasta.ids: $it"}
-  binOntReadsToSpecies(ch_pcs_all)
-  ch_binned = binOntReadsToSpecies.out//.view{"binOntReadsToSpecies output: $it"}
-  countReadsPerReference(ch_binned, 
-                        ch_illumina_samplelist, 
-                        params.countReadsPerReference.min_perc, 
-                        params.countReadsPerReference.max_perc,
-                        params.countReadsPerReference.threshold_pct)
-  ch_assigned = countReadsPerReference.out.view{"countReadsPerReference output: $it"}
+  mergeAndBin2species(ch_pcs)
+    .view{ "mergeAndBin2species results: $it" }
 
 }
