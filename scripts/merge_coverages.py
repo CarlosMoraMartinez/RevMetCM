@@ -2,6 +2,7 @@ import argparse
 import glob
 from functools import partial
 from typing import List, Callable
+import os
 from multiprocessing import Pool
 
 import pandas as pd
@@ -10,10 +11,15 @@ INPUT_EXTENSION: str = '.depth.gz'
 DEFAULT_PROCESSES: int = 12
 UNASSIGNED: str = 'Unassigned'
 
+def read_filelist(txtfile: str, prefix: str) -> List[str]:
+    fnames: List[str] = [l.strip() for l in open(txtfile, 'r')]
+    fnames = [f for f in fnames if os.path.basename(f).startswith(prefix)]
+    return fnames
+
 def read_table(fname: str, extension:str = INPUT_EXTENSION) -> pd.DataFrame:
     ont: str
     illumina: str
-    ont, illumina = fname.replace(extension, "").split("_")
+    ont, illumina = os.path.basename(fname).replace(extension, "").split("_")
     ont = ont.split(".")[0]
     illumina = illumina.split(".")[0]   
     df : pd.DataFrame = pd.read_csv(fname, compression="gzip", sep="\t")
@@ -38,6 +44,7 @@ parser: argparse.ArgumentParser = argparse.ArgumentParser(formatter_class=argpar
                                                           description='A tool for uniquely binning reads based on percentage coverage')
 parser.add_argument('-n', '--n_cores', type = int, help='Number of parallel processes', default=DEFAULT_PROCESSES)
 parser.add_argument('-p', '--prefix', type = str, help='Prefix of all input files', default="")
+parser.add_argument('-f', '--filelist', type = str, help='Text file with full paths of files to read', default="")
 parser.add_argument('-e', '--extension', type = str, help='Extension input files', default=INPUT_EXTENSION)
 
 
@@ -46,11 +53,21 @@ def main():
     n_cores: int = args.n_cores
     prefix: str = args.prefix
     extension: str = args.extension
+    filelist: str = args.filelist
     
-    fnames: List[str] = glob.glob(f"{prefix}*{INPUT_EXTENSION}")
+    fnames: List[str]
+    if not filelist:
+        print("Looking for files in the workspace")
+        fnames = glob.glob(f"{prefix}*{INPUT_EXTENSION}")
+    else:
+        print("Reading list of files")
+        fnames = read_filelist(filelist, prefix)
+    
     df: pd.DataFrame = read_all(fnames, n_cores, extension)
     df = bin2species(df)
-    df.to_csv(f"{prefix}_all.csv", sep="\t", index=False)
+    outfile: str = f"{prefix}_all.csv"
+    print(f"Printing output: {outfile}")
+    df.to_csv(outfile, sep="\t", index=False)
   
 if __name__ == "__main__":
     main()

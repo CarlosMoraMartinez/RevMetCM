@@ -126,7 +126,7 @@ process alignIllumina {
   label 'nf_06_algn'
   cpus params.resources.alignment.cpus
   memory params.resources.alignment.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
   publishDir "$results_dir/6_alignIllumina", mode: 'symlink'
 
@@ -185,7 +185,7 @@ process getCoverage{
   label 'nf_08_dpth'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
   publishDir "$results_dir/8_getCoverage", mode: 'symlink'
   
@@ -218,11 +218,13 @@ process mergeAndBin2species {
     tuple(val(ont_id), path(pcs))
 
   output:
-    path "${ont_id}_all.csv"
+    tuple(path("${ont_id}_all.csv"), path("${ont_id}_tmp.txt"))
 
   shell:
   '''
-  python !{params.scriptsdir}/merge_coverages.py  -n !{params.resources.standard2.cpus} -p !{ont_id}
+  for pc in !{pcs}; do echo $pc >> !{ont_id}_tmp.txt; done
+  python !{params.scriptsdir}/merge_coverages.py  -n !{params.resources.mergeandbin2species.cpus} -p !{ont_id}
+  exit 1
   '''
 }
 
