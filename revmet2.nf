@@ -1,4 +1,6 @@
 #!/usr/bin/env nextflow
+include { ont2fasta } from './process_ont.nf'
+include { illuminafastq } from './illumina_fastq.nf'
 
 ch_ont = Channel
   .fromPath(params.ont)
@@ -8,125 +10,12 @@ ch_illumina = Channel
   .fromFilePairs(params.illumina)
   //.view{"Input Illumina: $it"}
 
-process getIlluminaSampleList{
-  label 'nf_01_ilslst'
-  cpus params.resources.standard1.cpus
-  memory params.resources.standard1.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'terminate' }
-  maxRetries 10
-  publishDir "$results_dir/1_getIlluminaSampleList"
-  input:
-  val ill_names
-  
-  output:
-  path 'skim_ref.ids'
-
-  shell:
-  '''
-  touch skim_ref.ids
-  echo !{ill_names} | sed 's/, /\\n/g' | tr -d [] | cut -f 1 -d_ > skim_ref.ids
-  '''
-}
-
-process filterOntReads {
-  label 'nf_02_flng'
-  conda params.filterOntReads.conda
-  cpus params.resources.standard2.cpus
-  memory params.resources.standard2.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
-  publishDir "$results_dir/2_filterOntReads-l$min_length-q$min_mean_q", mode: 'copy'
-  
-  input:
-  path ont_file
-  val min_length
-  val min_mean_q
-  
-  output:
-  path('*.fastq.gz')
-
-  shell:
-  '''
-  #Get fasta from nanopore fastq
-  outfile=$(basename -s .fastq.gz !{ont_file} | sed "s/_/-/g")
-  filtlong --min_length !{min_length} --min_mean_q !{min_mean_q} !{ont_file} | gzip > $outfile'.trim.fastq.gz'
-  '''
-
-}
-
-process makeFastaFromFastq {
-  label 'nf_03_gtfa'
-  cpus params.resources.standard1.cpus
-  memory params.resources.standard1.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
-  publishDir "$results_dir/3_makeFastaFromFastq", mode: 'symlink'
-  
-  input:
-  path ont_file
-  
-  output:
-  path('*.fasta.gz')
-
-  shell:
-  '''
-  #Get fasta from nanopore fastq
-  outfile=$(basename -s .fastq.gz !{ont_file} | sed "s/_/-/g")
-  seqtk seq -a !{ont_file} | gzip > $outfile'.fasta.gz'
-  '''
-}
-
-process getFastaIDs {
-  label 'nf_04_fids'
-  cpus params.resources.standard1.cpus
-  memory params.resources.standard1.mem
-  publishDir "$results_dir/4_getFastaIDs", mode: 'symlink'
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
-  
-  input:
-  path fasta_file
-  
-  output:
-   path('*.ids')
-
-
-  shell:
-  '''
-  #Get list of nanopore read ids from nanopore fasta
-  outfile=$(basename -s .fasta.gz !{fasta_file})
-  zgrep ">" !{fasta_file}  | sed 's/>//g' | cut -f 1 -d\\  > $outfile'.ids'
-  '''
-}
-
-process indexReferenceBwa {
-  label 'nf_05_idx'
-  cpus params.resources.index.cpus
-  memory params.resources.index.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
-  publishDir "$results_dir/5_ont_index_bwa", mode: 'symlink'
-
-  input:
-  path fasta_file
-  
-  output:
-  tuple path("${fasta_file}"), path("${fasta_file}*")
-
-
-  shell:
-  '''
-  #Index nanopore fasta reference prior to alignment
-  #Note: this will happen even if minimap2 is used instead of bwa. Fix in the future.
-  bwa index !{fasta_file}
-  '''
-}
 
 process alignIllumina {
   label 'nf_06_algn'
   cpus params.resources.alignment.cpus
   memory params.resources.alignment.mem
-  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  errorStrategy { task.exitStatus in 1..2 ? 'terminate' : 'ignore' }
   maxRetries 10
   publishDir "$results_dir/6_alignIllumina", mode: 'symlink'
 
@@ -139,10 +28,10 @@ process alignIllumina {
   shell:
   if( params.alignIllumina.program == 'minimap2' )
     '''
-    outfile=$(basename -s .fasta !{ont_file})_!{illumina_id}
+    outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
     rawbam=$outfile'_raw.bam'
 
-    minimap2 -ax sr !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
+    minimap2 -ax sr !{ont_index} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
     '''
   else if( params.alignIllumina.program == 'bwa' )
     '''
@@ -181,6 +70,29 @@ process filterIlluminaAlignment{
   '''
 }
 
+process filterDustRegions{
+  label 'nf_12_dustfilt'
+  cpus params.resources.standard2.cpus
+  memory params.resources.standard2.mem
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  maxRetries 10
+  publishDir "$results_dir/12_filterDust", mode: 'symlink'
+  
+  input:
+    tuple(val(ont), val(bam), val(bed))
+
+  output:
+    path('*.dust.bam')
+
+  shell:
+  '''
+  outfile=$(basename -s .bam !{bam})
+  outbam=$outfile'.dust.bam'
+
+  bedtools intersect -v -abam !{bam} -b !{bed} > $outbam
+  '''
+}
+
 process getCoverage{
   label 'nf_08_dpth'
   cpus params.resources.standard2.cpus
@@ -211,66 +123,66 @@ process mergeAndBin2species {
   cpus params.resources.mergeandbin2species.cpus
   memory params.resources.mergeandbin2species.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
-  maxRetries 10
+  maxRetries 3
   storeDir "$results_dir/9_MergeAndBin"
 
   input:
     tuple(val(ont_id), path(pcs))
+    val min_coverage
 
   output:
-    tuple(path("${ont_id}_all.csv"), path("${ont_id}_tmp.txt"))
+    tuple(path("${ont_id}*_all.csv"), path("${ont_id}_tmp.txt"))
 
   shell:
   '''
   for pc in !{pcs}; do echo $pc >> !{ont_id}_tmp.txt; done
-  python !{params.scriptsdir}/merge_coverages.py  -n !{params.resources.mergeandbin2species.cpus} -p !{ont_id}
-  exit 1
+  python !{params.scriptsdir}/merge_coverages.py  -m !{min_coverage} -n !{params.resources.mergeandbin2species.cpus} -p !{ont_id}
   '''
 }
 
 workflow {
 
-  if(params.filterOntReads.do_filter){
-    filterOntReads(ch_ont, params.filterOntReads.min_length, params.filterOntReads.min_mean_q) |
-    makeFastaFromFastq
-  }else{
-    makeFastaFromFastq(ch_ont)
-  }
-  ch_ont_fastq = makeFastaFromFastq.out
-  //ch_ont_fastq.view{ "Fasta created from fastq: $it" }
 
-  indexReferenceBwa(ch_ont_fastq)
-  ch_ont_index = indexReferenceBwa.out
-  //ch_ont_index.view{ "BWA index created from fasta: $it" }
+  ont2fasta(ch_ont)
+  ch_ont_index = ont2fasta.out.ch_ont_index
 
-  getFastaIDs(ch_ont_fastq)
-  ch_ont_ids = getFastaIDs.out
-  //ch_ont_ids.view{ "Fasta ID list created from fasta: $it" }
-
-  ch_illumina_samples = ch_illumina
-  .map{x ->
-    def sname = x.get(0)
-    return sname}
-  .collect()
-  //.view()
-  getIlluminaSampleList(ch_illumina_samples)
-  ch_illumina_samplelist=getIlluminaSampleList.out
-  //.view{ "Illumina sample list: $it" }
+  illuminafastq(ch_illumina)
+  ch_illumina_samplelist=illuminafastq.out
 
   ch_ont_index=ch_ont_index.combine(ch_illumina)
   //.view{ "ch_ont_index combined: $it" }
   
   alignIllumina(ch_ont_index) 
   ch_aligned = alignIllumina.out
-  //.view{ "Alignment result: $it" }
+  .view{ "Alignment result: $it" }
   filterIlluminaAlignment(
     ch_aligned,
     params.filterIlluminaAlignment.mapq,
     params.filterIlluminaAlignment.include_flag_f,
     params.filterIlluminaAlignment.exclude_flag_F
-  ) | 
-  //view{ "filterIlluminaAlignmentignment result: $it" } |
-  getCoverage 
+  )
+  //.view{ "filterIlluminaAlignmentignment result: $it" } |
+  ch_filtered = filterIlluminaAlignment.out
+
+  //Filter aligmnents in low complexity regions detected by dustmasker
+  if(params.filterLowComplexityRegions){
+    ch_dustbed = ont2fasta.out.ch_ont_dust
+    .map{ file ->
+      def key = file.name.toString().tokenize('.').get(0)
+      return tuple(key, file)
+    }
+     //.view{ "filterLowComplexityRegions - map ont name to bed file: $it" } 
+    ch_filtered = ch_filtered.map{ file ->
+      def key = file.name.toString().tokenize('_').get(0)
+      return tuple(key, file)
+    }.combine(ch_dustbed, by:0)
+     //.view{ "filterLowComplexityRegions - map bed with bam: $it" } 
+    filterDustRegions(ch_filtered)
+    ch_filtered = filterDustRegions.out
+     //.view{ "filterDustRegions output bam: $it" }
+  }
+
+  getCoverage(ch_filtered)
   //| view{ "getCoverage result: $it" } 
 
   ch_pcs = getCoverage.out
@@ -279,10 +191,10 @@ workflow {
     return tuple(key, file)
   }
   .groupTuple()
-  .view{ "getCoverage grouped by nanopore sample: $it" }
+  //.view{ "getCoverage grouped by nanopore sample: $it" }
 
   //Merge all pcs from one nanopore sample into one file
-  mergeAndBin2species(ch_pcs)
-  .view{ "mergeAndBin2species results: $it" }
+  mergeAndBin2species(ch_pcs, params.mergeAndBin2species.min_coverage)
+  //.view{ "mergeAndBin2species results: $it" }
 
 }
