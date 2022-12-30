@@ -72,6 +72,7 @@ process filterIlluminaAlignment{
 
 process filterDustRegions{
   label 'nf_12_dustfilt'
+  conda params.filterDustRegions.conda
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
