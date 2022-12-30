@@ -36,7 +36,7 @@ process alignIllumina {
     '''
   else if( params.alignIllumina.program == 'bwa' )
     '''
-    outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
+    outfile=$(cut -f 1 -d. <(echo !{ont_file}))_!{illumina_id}
     rawbam=$outfile'_raw.bam'
 
     bwa mem -t !{params.resources.alignment.cpus} !{params.alignIllumina.bwaparams} !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
