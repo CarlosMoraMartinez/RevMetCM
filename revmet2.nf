@@ -29,7 +29,7 @@ process alignIllumina {
   if( params.alignIllumina.program == 'minimap2' )
     '''
     #outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
-    outfile=$(cut -f 1 -d\. <(echo !{ont_file}))_!{illumina_id}
+    outfile=$(cut -f 1 -d. <(echo !{ont_file}))_!{illumina_id}
     rawbam=$outfile'_raw.bam'
 
     minimap2 -t !{params.resources.alignment.cpus} -ax sr !{ont_index} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
