@@ -144,7 +144,6 @@ process mergeAndBin2species {
 
 workflow {
 
-
   ont2fasta(ch_ont)
   ch_ont_index = ont2fasta.out.ch_ont_index
 
