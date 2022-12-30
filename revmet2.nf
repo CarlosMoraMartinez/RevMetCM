@@ -157,7 +157,7 @@ workflow {
   
   alignIllumina(ch_ont_index) 
   ch_aligned = alignIllumina.out
-  .view{ "Alignment result: $it" }
+  //.view{ "Alignment result: $it" }
   filterIlluminaAlignment(
     ch_aligned,
     params.filterIlluminaAlignment.mapq,
@@ -174,7 +174,7 @@ workflow {
       def key = file.name.toString().tokenize('.').get(0)
       return tuple(key, file)
     }
-     .view{ "filterLowComplexityRegions - map ont name to bed file: $it" } 
+     //.view{ "filterLowComplexityRegions - map ont name to bed file: $it" } 
     ch_filtered = ch_filtered.map{ file ->
       def key = file.name.toString().tokenize('_').get(0)
       return tuple(key, file)
