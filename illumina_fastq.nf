@@ -37,7 +37,11 @@ process trimReads{
   shell:
   '''
   trim_galore -q !{quality} --length !{min_length} --gzip --paired !{fastq[0]} !{fastq[1]}
-  rename "s/_val_[12].fq.gz/.trim.fastq.gz/" *.fq.gz
+  #rename "s/_val_[12].fq.gz/.trim.fastq.gz/" *.fq.gz #doesn't  work...
+  r1=$(ls *_val_1.fq.gz)
+  r2=$(ls *_val_2.fq.gz)
+  mv $r1 ${r1%_val_1.fq.gz}'.trim.fastq.gz'
+  mv $r2 ${r2%_val_2.fq.gz}'.trim.fastq.gz'
   '''
 }
 
