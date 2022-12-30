@@ -1,13 +1,13 @@
 #!/usr/bin/env nextflow
 
 process filterOntReads {
-  label 'nf_02_flng'
+  label 'nf_04_flng'
   conda params.filterOntReads.conda
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/2_filterOntReads-l$min_length-q$min_mean_q", mode: 'copy'
+  publishDir "$results_dir/04_filterOntReads-l$min_length-q$min_mean_q", mode: 'copy'
   
   input:
   path ont_file
@@ -15,7 +15,7 @@ process filterOntReads {
   val min_mean_q
   
   output:
-  path('*.fastq.gz')
+  path('*trim.fastq.gz')
 
   shell:
   '''
@@ -27,12 +27,12 @@ process filterOntReads {
 }
 
 process makeFastaFromFastq {
-  label 'nf_03_gtfa'
+  label 'nf_05_gtfa'
   cpus params.resources.standard1.cpus
   memory params.resources.standard1.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/3_makeFastaFromFastq", mode: 'symlink'
+  publishDir "$results_dir/05_makeFastaFromFastq", mode: 'symlink'
   
   input:
   path ont_file
@@ -49,10 +49,10 @@ process makeFastaFromFastq {
 }
 
 process getFastaIDs {
-  label 'nf_04_fids'
+  label 'nf_06_fids'
   cpus params.resources.standard1.cpus
   memory params.resources.standard1.mem
-  publishDir "$results_dir/4_getFastaIDs", mode: 'symlink'
+  publishDir "$results_dir/06_getFastaIDs", mode: 'symlink'
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
   
@@ -72,12 +72,12 @@ process getFastaIDs {
 }
 
 process indexReference {
-  label 'nf_05_idx'
+  label 'nf_07_idx'
   cpus params.resources.index.cpus
   memory params.resources.index.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/5_ont_index", mode: 'symlink'
+  publishDir "$results_dir/07_ont_index", mode: 'symlink'
 
   input:
   path fasta_file
@@ -136,7 +136,7 @@ workflow ont2fasta {
       makeFastaFromFastq(ch_ont)
     }
     ch_ont_fastq = makeFastaFromFastq.out
-    //ch_ont_fastq.view{ "Fasta created from fastq: $it" }
+    ch_ont_fastq.view{ "Fasta created from fastq: $it" }
 
     indexReference(ch_ont_fastq)
     ch_ont_index = indexReference.out
