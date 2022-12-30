@@ -29,14 +29,14 @@ process alignIllumina {
   if( params.alignIllumina.program == 'minimap2' )
     '''
     #outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
-    outfile=$(cut -f 1 -d. <(echo !{ont_file}))_!{illumina_id}
+    outfile=$(cut -f 1 -d. <(basename !{ont_file}))_!{illumina_id}
     rawbam=$outfile'_raw.bam'
 
     minimap2 -t !{params.resources.alignment.cpus} -ax sr !{ont_index} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
     '''
   else if( params.alignIllumina.program == 'bwa' )
     '''
-    outfile=$(cut -f 1 -d. <(echo !{ont_file}))_!{illumina_id}
+    outfile=$(cut -f 1 -d. <(basename !{ont_file}))_!{illumina_id}
     rawbam=$outfile'_raw.bam'
 
     bwa mem -t !{params.resources.alignment.cpus} !{params.alignIllumina.bwaparams} !{ont_file} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
@@ -157,7 +157,7 @@ workflow {
   
   alignIllumina(ch_ont_index) 
   ch_aligned = alignIllumina.out
-  //.view{ "Alignment result: $it" }
+  .view{ "Alignment result: $it" }
   filterIlluminaAlignment(
     ch_aligned,
     params.filterIlluminaAlignment.mapq,
