@@ -28,7 +28,8 @@ process alignIllumina {
   shell:
   if( params.alignIllumina.program == 'minimap2' )
     '''
-    outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
+    #outfile=$(basename -s .fasta.gz !{ont_file})_!{illumina_id}
+    outfile=$(cut -f 1 -d\. <(echo !{ont_file}))_!{illumina_id}
     rawbam=$outfile'_raw.bam'
 
     minimap2 -t !{params.resources.alignment.cpus} -ax sr !{ont_index} !{illumina_reads[0]}  !{illumina_reads[1]} | samtools view -bS -o $rawbam
@@ -173,7 +174,7 @@ workflow {
       def key = file.name.toString().tokenize('.').get(0)
       return tuple(key, file)
     }
-     //.view{ "filterLowComplexityRegions - map ont name to bed file: $it" } 
+     .view{ "filterLowComplexityRegions - map ont name to bed file: $it" } 
     ch_filtered = ch_filtered.map{ file ->
       def key = file.name.toString().tokenize('_').get(0)
       return tuple(key, file)
