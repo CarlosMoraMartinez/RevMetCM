@@ -12,12 +12,12 @@ ch_illumina = Channel
 
 
 process alignIllumina {
-  label 'nf_09_algn'
+  label 'rvm01_algn'
   cpus params.resources.alignment.cpus
   memory params.resources.alignment.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/09_alignIllumina", mode: 'symlink'
+  publishDir "$results_dir/rvm01_alignIllumina", mode: 'symlink'
 
   input:
     tuple(val(ont_file), val(ont_index), val(illumina_id), val(illumina_reads))
@@ -44,12 +44,12 @@ process alignIllumina {
 }
 
 process filterIlluminaAlignment{
-  label 'nf_10_smflt'
+  label 'rvm02_smflt'
   cpus params.resources.samtoolsfilter.cpus
   memory params.resources.samtoolsfilter.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/10_filterIlluminaAlignment-F$exclude_flag_F-q$mapq", mode: 'symlink'
+  publishDir "$results_dir/rvm02_filterIlluminaAlignment-F$exclude_flag_F-q$mapq", mode: 'symlink'
 
   input:
     path bam
@@ -72,13 +72,13 @@ process filterIlluminaAlignment{
 }
 
 process filterDustRegions{
-  label 'nf_11_dustfilt'
+  label 'rvm03_dustfilt'
   conda params.filterDustRegions.conda
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/11_filterDust", mode: 'symlink'
+  publishDir "$results_dir/rvm03_filterDust", mode: 'symlink'
   
   input:
     tuple(val(ont), val(bam), val(bed))
@@ -96,12 +96,12 @@ process filterDustRegions{
 }
 
 process getCoverage{
-  label 'nf_12_dpth'
+  label 'rvm04_dpth'
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/12_getCoverage", mode: 'symlink'
+  publishDir "$results_dir/rvm04_getCoverage", mode: 'symlink'
   
   input:
     path bam
@@ -120,13 +120,13 @@ process getCoverage{
 }
 
 process mergeAndBin2species {
-  label 'nf_13_bin2sp'
+  label 'rvm05_bin2sp'
   conda params.mergeAndBin2species.conda
   cpus params.resources.mergeandbin2species.cpus
   memory params.resources.mergeandbin2species.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 3
-  storeDir "$results_dir/13_MergeAndBin"
+  storeDir "$results_dir/rvm05_MergeAndBin"
 
   input:
     tuple(val(ont_id), path(pcs))

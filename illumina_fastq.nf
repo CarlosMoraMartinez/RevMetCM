@@ -1,10 +1,10 @@
 process getIlluminaSampleList{
-  label 'nf_01_ilslst'
+  label 'ilm01_ilslst'
   cpus params.resources.standard1.cpus
   memory params.resources.standard1.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/01_getIlluminaSampleList"
+  publishDir "$results_dir/ilm01_getIlluminaSampleList"
   input:
   val ill_names
   
@@ -19,13 +19,13 @@ process getIlluminaSampleList{
 }
 
 process trimReads{
-  label 'nf_02_trimIllumina'
+  label 'ilm02_trimIllumina'
   conda params.trimReads.conda
   cpus params.resources.standard1.cpus
   memory params.resources.standard1.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/02_trimIllumina", mode: 'symlink'
+  publishDir "$results_dir/ilm02_trimIllumina", mode: 'symlink'
   input:
   tuple(val(illumina_id), val(fastq))
   val quality
@@ -46,13 +46,13 @@ process trimReads{
 }
 
 process getFastQCIllumina{
-  label 'nf_03_fastqc'
+  label 'ilm03_fastqc'
   conda params.getFastQCIllumina.conda
   cpus params.resources.standard1.cpus
   memory params.resources.standard1.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  storeDir "$results_dir/03_FastQC"
+  publishDir "$results_dir/ilm03_FastQC", mode: 'copy'
   input:
   path fastq
   
@@ -62,6 +62,32 @@ process getFastQCIllumina{
   shell:
   '''
   fastqc -q !{fastq}  
+  '''
+}
+
+process taxonFilterIllumina {
+  label 'ilm04_taxonFiltIllumina'
+  conda params.taxonFilterIllumina.conda
+  cpus params.resources.taxonFilterIllumina.cpus
+  memory params.resources.taxonFilterIllumina.mem
+  errorStrategy { task.exitStatus in 1..2 ? 'terminate' : 'terminate' }
+  maxRetries 0
+  publishDir "$results_dir/ilm04_taxonFiltIllumina", mode: 'symlink'
+
+  input:
+  tuple(val(illumina_id), path(fastq))
+  path db
+  
+  output:
+  tuple(path("*taxons.txt.gz"), val(illumina_id), path('*.tx.fastq.gz'))
+
+  shell:
+  ''' 
+  outfile=!{illumina_id}'_taxons.txt.gz' 
+  kraken2 --db !{db} --paired --threads !{params.resources.taxonFilterOnt.cpus} --unclassified-out unclassified#.fastq --gzip-compressed !{fastq[0]} !{fastq[1]} | gzip > $outfile
+  gzip unclassified_1.fastq unclassified_2.fastq
+  mv unclassified_1.fastq.gz $(basename -s .fastq.gz !{fastq[0]}).tx.fastq.gz
+  mv unclassified_2.fastq.gz $(basename -s .fastq.gz !{fastq[1]}).tx.fastq.gz
   '''
 }
 
@@ -90,7 +116,16 @@ workflow illuminafastq {
   if(params.trimReads.do_trim){
     trimReads(ch_illumina, params.trimReads.quality, params.trimReads.min_length)
     ch_illumina_processed = trimReads.out
-    .view{ "Illumina trimmed reads: $it" }
+    //.view{ "Illumina trimmed reads: $it" }
+
+  ch_taxons_illumina = Channel.from([])
+  if(params.taxonFilterIllumina.do_filter){
+    taxonFilterIllumina(ch_illumina_processed, params.taxonFilterIllumina.db)
+    ch_illumina_processed = taxonFilterIllumina.out.map{it -> [it[1], it[2]]}
+        //.view{ "Illumina fastq filtered by taxon: $it" }
+    ch_taxons_illumina = taxonFilterIllumina.out.map{it -> it[0]}
+        //.view{ "Illumina taxon composition: $it" }
+  }
 
   //Add trimmed fastq to a channel to perform FastQC
     if(params.getFastQCIllumina.do_fastqc){
@@ -110,5 +145,6 @@ workflow illuminafastq {
     ch_illumina_samplelist
     ch_fastqc
     ch_illumina_processed
+    ch_taxons_illumina
 
 }

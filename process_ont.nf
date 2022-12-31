@@ -1,13 +1,13 @@
 #!/usr/bin/env nextflow
 
 process filterOntReads {
-  label 'nf_04_flng'
+  label 'ont01_flng'
   conda params.filterOntReads.conda
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/04_filterOntReads-l$min_length-q$min_mean_q", mode: 'copy'
+  publishDir "$results_dir/ont01_filterOntReads-l$min_length-q$min_mean_q", mode: 'copy'
   
   input:
   path ont_file
@@ -27,12 +27,12 @@ process filterOntReads {
 }
 
 process makeFastaFromFastq {
-  label 'nf_05_gtfa'
+  label 'ont02_gtfa'
   cpus params.resources.standard1.cpus
   memory params.resources.standard1.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/05_makeFastaFromFastq", mode: 'symlink'
+  publishDir "$results_dir/ont02_makeFastaFromFastq", mode: 'symlink'
   
   input:
   path ont_file
@@ -49,10 +49,10 @@ process makeFastaFromFastq {
 }
 
 process getFastaIDs {
-  label 'nf_06_fids'
+  label 'ont03_fids'
   cpus params.resources.standard1.cpus
   memory params.resources.standard1.mem
-  publishDir "$results_dir/06_getFastaIDs", mode: 'symlink'
+  publishDir "$results_dir/ont03_getFastaIDs", mode: 'symlink'
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
   
@@ -72,12 +72,12 @@ process getFastaIDs {
 }
 
 process indexReference {
-  label 'nf_07_idx'
+  label 'ont04_idx'
   cpus params.resources.index.cpus
   memory params.resources.index.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/07_ont_index", mode: 'symlink'
+  publishDir "$results_dir/ont04_index", mode: 'symlink'
 
   input:
   path fasta_file
@@ -101,13 +101,13 @@ process indexReference {
 
 
 process getLowComplexityRegions {
-  label 'nf_11_dust'
+  label 'ont05_dust'
   conda params.getLowComplexityRegions.conda
   cpus params.resources.standard2.cpus
   memory params.resources.standard2.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
   maxRetries 10
-  publishDir "$results_dir/11_dust", mode: 'symlink'
+  publishDir "$results_dir/ont05_dust", mode: 'symlink'
 
   input:
   path fasta_file
@@ -126,34 +126,73 @@ process getLowComplexityRegions {
   '''
 }
 
+process taxonFilterOnt {
+  label 'ont06_taxonFiltOnt'
+  conda params.taxonFilterOnt.conda
+  cpus params.resources.taxonFilterOnt.cpus
+  memory params.resources.taxonFilterOnt.mem
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  maxRetries 10
+  publishDir "$results_dir/ont06_taxonFiltOnt", mode: 'symlink'
+
+  input:
+  path fastq
+  path db
+  
+  output:
+  tuple(path("*taxons.txt.gz"), path("*.fastq.gz"))
+
+  shell:
+  '''
+  outfile=$(basename -s .fastq.gz !{fastq})
+  
+  kraken2 --db !{db} --threads !{params.resources.taxonFilterOnt.cpus} --unclassified-out $outfile'.tx.fastq' --gzip-compressed !{fastq} | gzip > $outfile'_taxons.txt.gz' 
+  gzip $outfile'.tx.fastq' #TO DO: include pigz in the conda environment
+
+  '''
+}
+
 workflow ont2fasta {
   take: ch_ont
   main:
     if(params.filterOntReads.do_filter){
-      filterOntReads(ch_ont, params.filterOntReads.min_length, params.filterOntReads.min_mean_q) |
-      makeFastaFromFastq
-    }else{
-      makeFastaFromFastq(ch_ont)
+      filterOntReads(ch_ont, params.filterOntReads.min_length, params.filterOntReads.min_mean_q)
+      ch_ont = filterOntReads.out
+      //ch_ont.view{ "Fastq filtered filtlong: $it" }
     }
-    ch_ont_fastq = makeFastaFromFastq.out
-    ch_ont_fastq.view{ "Fasta created from fastq: $it" }
 
-    indexReference(ch_ont_fastq)
+    ch_taxons_ont = Channel.from([])
+    if(params.taxonFilterOnt.do_filter){
+      taxonFilterOnt(ch_ont, params.taxonFilterOnt.db)
+      ch_ont = taxonFilterOnt.out.map{it -> it[1]}
+        //.view{ "ONT fastq filtered by taxon: $it" }
+      ch_taxons_ont = taxonFilterOnt.out.map{it -> it[0]}
+        //.view{ "ONT taxon composition: $it" }
+    }
+
+    makeFastaFromFastq(ch_ont)
+    ch_ont_fasta = makeFastaFromFastq.out
+    ch_ont_fasta.view{ "Fasta created from fastq: $it" }
+
+    indexReference(ch_ont_fasta)
     ch_ont_index = indexReference.out
     ch_ont_index.view{ "BWA index created from fasta: $it" }
-    getFastaIDs(ch_ont_fastq)
+    getFastaIDs(ch_ont_fasta)
     ch_ont_ids = getFastaIDs.out 
+    //ch_ont_ids.view{ "Fasta ID list created from fasta: $it" }
 
-    ch_ont_dust = new Channel()
     if(params.filterLowComplexityRegions){
-      getLowComplexityRegions(ch_ont_fastq,
+      getLowComplexityRegions(ch_ont_fasta,
         params.getLowComplexityRegions.level, 
         params.getLowComplexityRegions.window)
       ch_ont_dust = getLowComplexityRegions.out
       //ch_ont_dust.view{ "BED with low complexity regions: $it" }
     }
-    //ch_ont_ids.view{ "Fasta ID list created from fasta: $it" }
+    
   emit:
     ch_ont_index
+    ch_ont_ids
+    ch_taxons_ont
     ch_ont_dust
+    ch_ont
 }
