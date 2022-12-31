@@ -39,3 +39,8 @@ kraken2 --paired --classified-out cseqs#.fq seqs_1.fq seqs_2.fq
 
 nohup kraken2 --db kraken2_comprehensive_DB_20181025 --threads 120 --classified-out in_compr#.fastq --unclassified-out unclas_compr#.fastq --gzip-compressed ../../easi_illumina2/AS0226.226.EASI_48.7161AF.HFYTVDRXY.2.210UDI-idt-UMI.1.fastq.gz  ../../easi_illumina2/AS0226.226.EASI_48.7161AF.HFYTVDRXY.2.210UDI-idt-UMI.2.fastq.gz
 
+#A lot of kraken DB: https://benlangmead.github.io/aws-indexes/k2
+# date 12/9/2022
+wget https://benlangmead.github.io/aws-indexes/k2
+
+

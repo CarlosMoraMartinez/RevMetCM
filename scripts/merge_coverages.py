@@ -88,7 +88,7 @@ def writeOutput(df: pd.DataFrame, prefix: str, min_percent: float, outdir:str = 
 # ----- command line parsing -----
 parser: argparse.ArgumentParser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, 
                                                           description='A tool for uniquely binning reads based on percentage coverage')
-parser.add_argument('-m', '--min_percent', type = float, help='Min percentage of ONT read coverage', default=DEFAULT_MIN_PERCENTAGE)
+parser.add_argument('-m', '--min_percents', type = str, help='Min percentage of ONT read coverage', default=str(DEFAULT_MIN_PERCENTAGE))
 parser.add_argument('-n', '--n_cores', type = int, help='Number of parallel processes', default=DEFAULT_PROCESSES)
 parser.add_argument('-p', '--prefix', type = str, help='Prefix of all input files', default="")
 parser.add_argument('-f', '--filelist', type = str, help='Text file with full paths of files to read', default="")
@@ -98,7 +98,7 @@ parser.add_argument('-o', '--outdir', type = str, help='Output directory', defau
 
 def main():
     args = parser.parse_args()
-    min_percent: float = args.min_percent
+    min_percents: List[float] = [float(i) for i in args.min_percents.split(',')]
     n_cores: int = args.n_cores
     prefix: str = args.prefix
     extension: str = args.extension
@@ -113,12 +113,12 @@ def main():
         print("Reading list of files")
         fnames = read_filelist(filelist, prefix)
     
-    df: pd.DataFrame = read_all(fnames, min_percent, n_cores, extension)
-    if df.shape[0] == 0:
-        exit(0)
-    df = bin2species(df, n_cores)  
-    #df = add_unassigned_reads(fnames[0], df)
-    writeOutput(df, prefix, min_percent, outdir)
+    for min_percent in min_percents:
+        df: pd.DataFrame = read_all(fnames, min_percent, n_cores, extension)
+        if df.shape[0] == 0:
+            continue
+        df = bin2species(df, n_cores)  
+        writeOutput(df, prefix, min_percent, outdir)
   
 if __name__ == "__main__":
     main()
