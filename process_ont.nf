@@ -181,6 +181,7 @@ workflow ont2fasta {
     ch_ont_ids = getFastaIDs.out 
     //ch_ont_ids.view{ "Fasta ID list created from fasta: $it" }
 
+    ch_ont_dust = Channel.from([])
     if(params.filterLowComplexityRegions){
       getLowComplexityRegions(ch_ont_fasta,
         params.getLowComplexityRegions.level, 
