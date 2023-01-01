@@ -172,11 +172,11 @@ workflow ont2fasta {
 
     makeFastaFromFastq(ch_ont)
     ch_ont_fasta = makeFastaFromFastq.out
-    ch_ont_fasta.view{ "Fasta created from fastq: $it" }
+    //ch_ont_fasta.view{ "Fasta created from fastq: $it" }
 
     indexReference(ch_ont_fasta)
     ch_ont_index = indexReference.out
-    ch_ont_index.view{ "BWA index created from fasta: $it" }
+    //ch_ont_index.view{ "BWA index created from fasta: $it" }
     getFastaIDs(ch_ont_fasta)
     ch_ont_ids = getFastaIDs.out 
     //ch_ont_ids.view{ "Fasta ID list created from fasta: $it" }
