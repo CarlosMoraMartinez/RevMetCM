@@ -4,7 +4,7 @@ library(pvclust)
 #library(dendextend)
 library(pvclust)
 library(ggtext)
-
+library(khroma)
 
 mytheme <-  theme_bw()+
   theme(plot.title = element_text(size = rel(1.5), hjust = 0.5,
@@ -95,6 +95,20 @@ matMockData <- function(res4, mat, mock_species2){
   return(matextra)
 }
 
+#Esta tiene la matriz de todas las plantas secuenciadas, pero Agrostis agrupadas en una sola. 
+matMockData_1 <- function(res4, mat, mock_species){
+  spnames <- c("Agrostis", colnames(mat)[!grepl("Agrostis", colnames(mat))])
+  present_species <- mock_species$Spp[mock_species$Spp %in% spnames]
+  matextra_1 <- matrix(numeric(length(unique(res4$mock_mix))*length(spnames)), nrow=length(spnames))
+  rownames(matextra_1) <- spnames
+  for (n in present_species){
+    matextra_1[n, ] <- unlist(mock_species[mock_species$Spp == n, names(mock_species) %in% res4$mock_mix])
+  }
+  colnames(matextra_1) <- as.factor(as.character(1:10))
+  matextra_1 <- as.data.frame(matextra_1)
+  return(matextra_1)
+}
+
 getSampleAnnotation <- function(res4, mat){
   ann <- data.frame(mix = as.factor(gsub("mix_", "", res4$mock_mix)), 
                     dilution = res4$dilution)
@@ -103,7 +117,7 @@ getSampleAnnotation <- function(res4, mat){
   return(ann)
 }
 
-getMergedMat2 <- function(mat, matextra){
+getMergedMat2 <- function(mat, matextra, ann){
   mat2 <- t(mat) %>% as.data.frame
   colnames(mat2) <- paste("sample ", colnames(mat2), sep="")
   matextra2 <- matextra
@@ -122,9 +136,9 @@ getMergedMat2 <- function(mat, matextra){
 getGenusSpecies<- function(mergedmat2){
   genus_species <- sapply(rownames(mergedmat2), FUN=function(x){strsplit(x, " ")[[1]][1]})
   ann_species <- data.frame(present = ifelse(rownames(mergedmat2) %in% splist, "species", 
-                                           ifelse(genus_species %in% genus, "genus", "absent")
+                                           ifelse(genus_species %in% genus, "genus", "Other (false positive)")
   ))
-  rownames(ann_species) <- rownames(mergedmat)
+  rownames(ann_species) <- rownames(mergedmat2)
   return(ann_species)
 }
 
@@ -141,7 +155,8 @@ buildMatrix <- function(res4, mock_species2){
   mat <- mat[ord, ]
   ann <- ann[ord, ]
   matextra <- matMockData(res4, mat, mock_species2)
-  mergedmat2 <- getMergedMat2(mat, matextra)
+  matextra_1 <- matMockData_1(res4, mat, mock_species)
+  mergedmat2 <- getMergedMat2(mat, matextra, ann)
   ann_species <- getGenusSpecies(mergedmat2)
   
   ann2 <- data.frame(dilution = rep(c("theoretical %", "dil A", "dil B", "dil C"), 
@@ -151,6 +166,7 @@ buildMatrix <- function(res4, mock_species2){
   ann_species_cut <- ann_species[colnames(matcut), ]
   return(list("mat" = mat, "ann"=ann, 
               "matextra"=matextra, 
+              "matextra_1"=matextra_1, 
               "mergedmat2"=mergedmat2, 
               "ann_species"=ann_species, 
               "ann2"=ann2,
@@ -234,7 +250,7 @@ makeAllHeatmaps<-function(mattemp){
 
 getCorrelations<-function(res4, mattemp, mock_species, mock_species2){
   mat <- mattemp[["mat"]]
-  matextra3 <- mattemp[["matextra"]]
+  matextra3 <- mattemp[["matextra_1"]]
   
   matextra3[grepl("Poa", rownames(matextra3)),] <- 0 #These species are not actually there
   
@@ -242,12 +258,13 @@ getCorrelations<-function(res4, mattemp, mock_species, mock_species2){
   Agrostis <- mat[, grepl("Agrostis", colnames(mat))] %>% apply(MAR=1, sum)
   mat <- cbind(mat[, ! grepl("Agrostis", colnames(mat))], Agrostis)
   
-  agrostis_theo <- matextra3["Agrostis canina", ]
-  rownames(agrostis_theo) <- "Agrostis"
-  matextra3 <- rbind(matextra3[! grepl("Agrostis", rownames(matextra3)), ], agrostis_theo)
+  #agrostis_theo <- matextra3["Agrostis canina", ]
+  #rownames(agrostis_theo) <- "Agrostis"
+  #matextra3 <- rbind(matextra3[! grepl("Agrostis", rownames(matextra3)), ], agrostis_theo)
   
   colnames(matextra3) <- paste("mix_", colnames(matextra3), sep="")
-  colnames(mat) == rownames(matextra3)
+  mat <- mat[,rownames(matextra3)]
+  #colnames(mat) == rownames(matextra3)
   present_species <- mock_species$Spp[mock_species$Spp %in% rownames(matextra3)]
   species_absent <- rownames(matextra3)[! rownames(matextra3) %in% present_species]
   
@@ -305,7 +322,7 @@ getDotPlot<- function(res4, mattemp){
   lev <- sort(unique(resvert$mock_sample))
   lev <- lev[c(4:length(lev), 1:3)]
   resvert$species_mod <- ifelse(resvert$proportion_expected > 0, 
-                                resvert$species, "absent")
+                                resvert$species, "Other (false positive)")
   resvert$mock_sample <- factor(resvert$mock_sample, 
                                    levels = lev)
   
@@ -314,7 +331,7 @@ getDotPlot<- function(res4, mattemp){
   resvert$mock_mix <- factor(resvert$mock_mix, lev)
   
   #splabs <- paste("*",unique(resvert$species_mod), "*", sep="")
- # splabs <- ifelse(splabs=="*absent*", "absent", splabs)
+ # splabs <- ifelse(splabs=="*absent*", "Other (false positive)", splabs)
   g1 <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
                       col=species_mod, fill=species_mod))+
     geom_point() +
@@ -323,6 +340,7 @@ getDotPlot<- function(res4, mattemp){
     ylab("Obtained proportion") +
     xlim(0, max(resvert$proportion_expected+0.05)) +
     ylim(0, max(resvert$proportion_found+0.05)) +
+    scale_colour_muted() +
     mytheme
   ggsave("corrplot1_sepNone_colSpecies.pdf", g1, width = 10, height = 7)
   
@@ -346,6 +364,7 @@ getDotPlot<- function(res4, mattemp){
     ylab("Obtained proportion") +
     xlim(0, max(resvert$proportion_expected+0.05)) +
     ylim(0, max(resvert$proportion_found+0.05)) +
+    scale_colour_muted() +
     #scale_fill_discrete(
     #  "Species",
     #  breaks = c(0:(length(splabs)-1)),
@@ -388,6 +407,7 @@ getDotPlot<- function(res4, mattemp){
     ylab("Obtained proportion") +
     xlim(0, max(resvert$proportion_expected+0.05)) +
     ylim(0, max(resvert$proportion_found+0.05)) +
+    scale_colour_muted() +
     mytheme
   ggsave("corrplot2d_sepMix_colSpecies.pdf", g2d, width = 12, height = 6)
   
@@ -400,6 +420,7 @@ getDotPlot<- function(res4, mattemp){
     ylab("Obtained proportion") +
     xlim(0, max(resvert$proportion_expected+0.05)) +
     ylim(0, max(resvert$proportion_found+0.05)) +
+    scale_colour_muted() +
     mytheme
   ggsave("corrplot2e_sepDil_colSpecies.pdf", g2e, width = 10, height = 4)
   
@@ -427,12 +448,15 @@ getDotPlot<- function(res4, mattemp){
     group_by(mock_mix) %>% 
     mutate(proportion = proportion/(sum(proportion))) %>% 
     as.data.frame()
-  
+  if(any(is.na(rev_allexp$proportion))){
+    rev_allexp$proportion[is.na(rev_allexp$proportion)] <- 0
+  }
   resvert4 <- rbind(resvert3[resvert3$type != "proportion_expected", ] , rev_allexp)
   
   g3 <- ggplot(resvert4, aes(y = proportion, x=dilution, fill=species_mod))+
     facet_wrap(. ~ mock_mix, scales = "free_x")+
     geom_bar(stat = "identity") +
+    scale_fill_bright()+
     mytheme
   ggsave("barplot.pdf", g3, width = 10, height = 7)
 }
@@ -457,26 +481,47 @@ mocksamplenum$proj2 <- barcodes$PROJ2[match(mocksamplenum$EASI_ID, barcodes$ASSA
 
 setwd("/home/carmoma//projects/pollen/results/")
 # Make sure to perform sed -i "s/#//"  before reading tables, there is a # name in header
-dirlist <- c( "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults01",
-             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults05",
-            "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults10",
-            "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults15",
-            "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults10",
-             "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults01",
-             "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults05",
-             "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults15",
-             "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults01",
-             "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults05",
-             "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults10",
-             "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults15",
-             "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults01",
-             "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults05",
-             "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults10",
-             "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults15",
-             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults01",
-             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults05",
-             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults10",
-             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults15"
+dirlist <- c( 
+  "/home/carmoma/projects/pollen/results/kraken_dust_noSamFilter/binresults01",
+  "/home/carmoma/projects/pollen/results/kraken_dust_noSamFilter/binresults05",
+  "/home/carmoma/projects/pollen/results/kraken_dust_noSamFilter/binresults10",
+  "/home/carmoma/projects/pollen/results/kraken_dust_noSamFilter/binresults15",
+  "/home/carmoma/projects/pollen/results/dustonly_score15/binresults01",
+  "/home/carmoma/projects/pollen/results/dustonly_score15/binresults05",
+  "/home/carmoma/projects/pollen/results/dustonly_score15/binresults10",
+  "/home/carmoma/projects/pollen/results/dustonly_score15/binresults15",
+  "/home/carmoma/projects/pollen/results/dustonly1/binresults01",
+  "/home/carmoma/projects/pollen/results/dustonly1/binresults05",
+  "/home/carmoma/projects/pollen/results/dustonly1/binresults10",
+  "/home/carmoma/projects/pollen/results/dustonly1/binresults15",
+  "/home/carmoma/projects/pollen/results/kraken_dust_1/binresults01",
+  "/home/carmoma/projects/pollen/results/kraken_dust_1/binresults05",
+  "/home/carmoma/projects/pollen/results/kraken_dust_1/binresults10",
+  "/home/carmoma/projects/pollen/results/kraken_dust_1/binresults15",
+  "/home/carmoma/projects/pollen/results/mock_kraken1/binresults01",
+  "/home/carmoma/projects/pollen/results/mock_kraken1/binresults05",
+  "/home/carmoma/projects/pollen/results/mock_kraken1/binresults10",
+  "/home/carmoma/projects/pollen/results/mock_kraken1/binresults15",
+  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults01",
+  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults05",
+  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults10",
+  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults15",
+  "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults10",
+  "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults01",
+  "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults05",
+  "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults15",
+  "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults01",
+  "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults05",
+  "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults10",
+  "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults15",
+  "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults01",
+  "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults05",
+  "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults10",
+  "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults15",
+  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults01",
+  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults05",
+  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults10",
+  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults15"
              )
 
 PERC_LIM <- 0.01
@@ -486,6 +531,7 @@ MIN_PERC_SP <- 0.01
 
 all_res4 <- data.frame()
 for(resultsdir in dirlist){
+  cat(resultsdir)
   setwd(resultsdir)
   res <- read_all_bin_csvs(recycle=TRUE)
   res$binned_species2 <- mapply(res$ILLUMINA, res$coverage, FUN=function(sp, pc) ifelse(pc < PERC_LIM, "Unassigned", sp))
@@ -502,17 +548,17 @@ for(resultsdir in dirlist){
   res2write <- as.data.frame(round(mattemp[["mat"]]*100, 3))
   write.table(res2write, "results_matrix.csv", sep="\t", row.names = T, quote=F)
 
-  res2write_trim <- res2write[, names(res2write)%in% spnames$Species[spnames$present_mock != "absent"]]
+  res2write_trim <- res2write[, names(res2write)%in% spnames$Species[spnames$present_mock != "Other (false positive)"]]
   write.table(res2write_trim, "results_matrix_presentonly.csv", sep="\t", row.names = T, quote=F)
 
-  makePvclust(mat)
+  #makePvclust(mat)
   makeAllHeatmaps(mattemp)
   getDotPlot(res4, mattemp)
 
 }
 
 setwd("/home/carmoma//projects/pollen/results/")
-write.table(all_res4, "221231_allresults.csv", sep="\t", quote=F, row.names = F)
+write.table(all_res4, "230101_allresults3.csv", sep="\t", quote=F, row.names = F)
 
 auxsum <- all_res4 %>% 
   group_by(condition) %>% 
@@ -526,4 +572,4 @@ auxsum <- all_res4 %>%
         specificity, sensitivity, PPV, NPV
     ) %>% 
   summarise_all(mean)
-write.table(auxsum, "221231_allsummary.csv", sep="\t", quote=F, row.names = F)
+write.table(auxsum, "230101_allsummary3.csv", sep="\t", quote=F, row.names = F)
