@@ -1,10 +1,445 @@
 library(tidyverse)
 library(pheatmap)
 library(pvclust)
+#library(dendextend)
+library(pvclust)
+library(ggtext)
 
+
+mytheme <-  theme_bw()+
+  theme(plot.title = element_text(size = rel(1.5), hjust = 0.5,
+                                  colour = "black", face = "bold")) +
+  theme(legend.title = element_text(face = "bold")) +
+  theme(axis.text.y = element_text(size = 12, 
+                                   colour = "black", angle = 0, face = "bold")) +
+  theme(strip.text.y = element_text(size = 12, 
+                                    colour = "black", angle = 0, face = "bold")) +
+  theme(strip.text.x = element_text(size = 12, 
+                                    colour = "black", angle = 0, face = "bold")) +
+  theme(axis.text.x = element_text(vjust = 1, 
+                                   hjust = 1, size = 14, 
+                                   colour = "black", angle = 0, 
+                                   face = "bold"))+
+  theme(axis.title.x = element_text(vjust = 1, hjust = 0.5, 
+                                    size = 16, colour = "black", 
+                                    angle = 0, face = "bold")) +
+  theme(axis.title.y= element_text(vjust = 1, hjust = 0.5, 
+                                   size = 16, colour = "black", 
+                                   angle = 90, face = "bold"))
+
+read_all_bin_csvs <- function(recycle=TRUE){
+  if(file.exists("ALL_READS_BINNED.csv") & recycle){
+    cat("Reading file...")
+    res <- read.table("ALL_READS_BINNED.csv", head=T, sep="\t", stringsAsFactors=F)
+    return(res)
+  }
+  f <- list.files(pattern="_all.csv")
+  res <- data.frame()
+  for(ont in f){
+    cat(ont, "\n")
+    a <- read.table(ont, sep="\t", head=T, stringsAsFactors = F)
+    a <- a %>% group_by(rname) %>% 
+      top_n(n = 1, wt = coverage) %>% 
+      ungroup
+    b <- table(a$rname)
+    b <- b[b > 1]
+    a <- a[!a$rname %in% names(b), ]
+    res <- rbind(res, a)
+  }
+  
+  write.table(res, "ALL_READS_BINNED.csv", sep="\t", row.names = F, quote=F)
+  return(res)
+}
+
+getSpeciesSummary<- function(res){
+  res3 <- res %>% group_by(ONT) %>% 
+    mutate(n_ont_including_unassigned = n()) %>% 
+    filter(binned_species2 != "Unassigned") %>% 
+    mutate(n_ont = n()) %>% 
+    group_by(ONT, binned_species2) %>% 
+    summarise(n_species = n(),
+              n_ont = unique(n_ont),
+              n_ont_including_unassigned = unique(n_ont_including_unassigned)) %>% 
+    mutate(species = binned_species2,
+           pct_species = n_species / n_ont) %>% 
+    mutate(
+      pct_species_trimmed = ifelse(pct_species < MIN_PERC_SP, 0, pct_species),
+      pct_species_trimmed = pct_species_trimmed/sum(pct_species_trimmed),
+      species_ref = species,
+      species_num = as.numeric(gsub("AS0", "", species)),
+      species = spnames$Species[match(species_num, spnames$EASI_ID)],
+      mock_sample = mocksamplenum$Mock_commiunity[match(ONT, mocksamplenum$proj2)],
+      mock_mix = mocksamplenum$mix[match(ONT, mocksamplenum$proj2)],
+      dilution = mocksamplenum$rep[match(ONT, mocksamplenum$proj2)]
+    )
+  write.table(res3, "percents_norm.csv", sep="\t", row.names = F, quote = F)
+  return(res3)
+}
+
+spread2matrixshape <- function(res3){
+  res4 <- res3 %>% 
+    select(mock_sample, mock_mix, dilution, species, pct_species_trimmed) %>% 
+    spread(species, pct_species_trimmed)  %>% 
+    data.frame %>% select(-ONT)
+  return(res4)
+}
+
+matMockData <- function(res4, mat, mock_species2){
+  matextra <- matrix(numeric(length(unique(res4$mock_mix))*ncol(mat)), nrow=ncol(mat))
+  rownames(matextra) <- colnames(mat)
+  for (n in mock_species2$Spp){
+    matextra[n, ] <- unlist(mock_species2[mock_species2$Spp == n, names(mock_species2) %in% res4$mock_mix])
+  }
+  colnames(matextra) <- as.factor(as.character(1:10))
+  matextra <- as.data.frame(matextra)
+  return(matextra)
+}
+
+getSampleAnnotation <- function(res4, mat){
+  ann <- data.frame(mix = as.factor(gsub("mix_", "", res4$mock_mix)), 
+                    dilution = res4$dilution)
+  names(ann)[1] <- "mock group"
+  rownames(ann) <- rownames(mat)  
+  return(ann)
+}
+
+getMergedMat2 <- function(mat, matextra){
+  mat2 <- t(mat) %>% as.data.frame
+  colnames(mat2) <- paste("sample ", colnames(mat2), sep="")
+  matextra2 <- matextra
+  colnames(matextra2) <- paste("mix ", colnames(matextra), sep = "")
+
+  mergedmat <- data.frame(species = rownames(mat2))
+  for(g in colnames(matextra2)){
+    mergedmat[, g] <- matextra2[, g]
+    samples <- which(as.character(ann$`mock group`) == gsub("mix ", "", g))
+    mergedmat <- cbind(mergedmat, mat2[, samples])
+  }
+  mergedmat2 <- as.matrix(mergedmat[, 2:ncol(mergedmat)])
+  return(mergedmat2)
+}
+
+getGenusSpecies<- function(mergedmat2){
+  genus_species <- sapply(rownames(mergedmat2), FUN=function(x){strsplit(x, " ")[[1]][1]})
+  ann_species <- data.frame(present = ifelse(rownames(mergedmat2) %in% splist, "species", 
+                                           ifelse(genus_species %in% genus, "genus", "absent")
+  ))
+  rownames(ann_species) <- rownames(mergedmat)
+  return(ann_species)
+}
+
+buildMatrix <- function(res4, mock_species2){
+  mat <- res4 %>% select_if(is.numeric) %>% as.matrix
+  mat[is.na(mat)] <- 0
+  rownames(mat) <- res4$mock_sample
+  
+  colnames(mat) <- gsub("\\.", " ", colnames(mat)) %>% gsub(" $", ".", .)
+  ann <- getSampleAnnotation(res4, mat)
+  
+  ord <- order(rownames(mat))
+  ord <- ord[c(4:length(ord), 1:3)]
+  mat <- mat[ord, ]
+  ann <- ann[ord, ]
+  matextra <- matMockData(res4, mat, mock_species2)
+  mergedmat2 <- getMergedMat2(mat, matextra)
+  ann_species <- getGenusSpecies(mergedmat2)
+  
+  ann2 <- data.frame(dilution = rep(c("theoretical %", "dil A", "dil B", "dil C"), 
+                                    dim(mergedmat2)[2]/4))
+  rownames(ann2) <- colnames(mergedmat2)
+  matcut <- mat[ , colnames(mat) %in% mock_species2$Spp]
+  ann_species_cut <- ann_species[colnames(matcut), ]
+  return(list("mat" = mat, "ann"=ann, 
+              "matextra"=matextra, 
+              "mergedmat2"=mergedmat2, 
+              "ann_species"=ann_species, 
+              "ann2"=ann2,
+              "matcut"=matcut,
+              "ann_species_cut"=ann_species_cut)
+  )
+}
+
+makePvclust <- function(mat){
+  pvc <- pvclust(t(mat), method.dist = "canberra")
+  pdf("pvclust.pdf")
+  plot(pvc)
+  dev.off()
+  #tryCatch(dev.off(),cat(" device already closed. "))
+}
+
+makeAllHeatmaps<-function(mattemp){
+  mat <- mattemp[["mat"]]
+  ann <- mattemp[["ann"]]
+  matextra <- mattemp[["matextra"]]
+  mergedmat2 <- mattemp[["mergedmat2"]]
+  ann_species <- mattemp[["ann_species"]]
+  ann2 <- mattemp[["ann2"]]
+  matcut <- mattemp[["matcut"]]
+  ann_species_cut <- mattemp[["ann_species_cut"]]
+  
+  spsitalic <-sapply(
+    colnames(mat),
+    function(x) bquote(italic(.(x))))
+  
+  p <- pheatmap(t(mat), 
+                annotation_col = ann, 
+                annotation_row = ann_species,  
+                filename = "heatmap_cluster.png", 
+                labels_row = as.expression(spsitalic),
+                angle_col=315,
+                width = 12, height = 8)
+  #dev.off()
+  p <- pheatmap(t(mat), 
+                annotation_col = ann, 
+                annotation_row = ann_species,
+                filename = "heatmap_bygroup.png", 
+                labels_row = as.expression(spsitalic),
+                cluster_cols = F,
+                gaps_col = seq(3, nrow(mat)-1, by=3),
+                angle_col=315,
+                width = 12, height = 8)
+  #dev.off()
+  #Only species of interest
+  
+  p <- pheatmap(t(matcut), 
+                annotation_col = ann, 
+                #annotation_row = ann_species_cut,
+                filename = "heatmap_cluster_selectedspecies.png", 
+                labels_row = as.expression(spsitalic),
+                angle_col=315,
+                width = 12, height = 5)
+  #dev.off()
+  p <- pheatmap(t(matcut), 
+                annotation_col = ann, 
+                #annotation_row = ann_species_cut,
+                filename = "heatmap_bygroup_selectedspecies.png", 
+                labels_row = as.expression(spsitalic),
+                cluster_cols = F,
+                gaps_col = seq(3, nrow(mat)-1, by=3),
+                angle_col=315,
+                width = 12, height = 5)
+  #dev.off()
+  
+  p <- pheatmap(mergedmat2, 
+                annotation_col = ann2, 
+                annotation_row = ann_species,
+                filename = "heatmap_with_originalmix.png", 
+                labels_row = as.expression(spsitalic),
+                cluster_cols = F,
+                gaps_col = seq(4, nrow(mergedmat2)-1, by=4),
+                angle_col=315,
+                width = 14, height = 8)
+  #dev.off()
+}
+
+getCorrelations<-function(res4, mattemp, mock_species, mock_species2){
+  mat <- mattemp[["mat"]]
+  matextra3 <- mattemp[["matextra"]]
+  
+  matextra3[grepl("Poa", rownames(matextra3)),] <- 0 #These species are not actually there
+  
+  #Average agrostis
+  Agrostis <- mat[, grepl("Agrostis", colnames(mat))] %>% apply(MAR=1, sum)
+  mat <- cbind(mat[, ! grepl("Agrostis", colnames(mat))], Agrostis)
+  
+  agrostis_theo <- matextra3["Agrostis canina", ]
+  rownames(agrostis_theo) <- "Agrostis"
+  matextra3 <- rbind(matextra3[! grepl("Agrostis", rownames(matextra3)), ], agrostis_theo)
+  
+  colnames(matextra3) <- paste("mix_", colnames(matextra3), sep="")
+  colnames(mat) == rownames(matextra3)
+  present_species <- mock_species$Spp[mock_species$Spp %in% rownames(matextra3)]
+  species_absent <- rownames(matextra3)[! rownames(matextra3) %in% present_species]
+  
+  for(g in colnames(matextra3)){
+    ind = which(res4$mock_mix == g)
+    for(i in ind){
+      res4$correlation[i] <- cor(matextra3[, g], mat[res4$mock_sample[i], ])
+      res4$correlation_present[i] <- cor(matextra3[present_species, g], mat[res4$mock_sample[i], present_species])
+      
+      res4$mean_diff[i] <-  mean(abs(matextra3[, g] - mat[res4$mock_sample[i], ]))
+      res4$mean_diff_positive[i] <- mean(abs(matextra3[present_species, g] - 
+                                                  mat[res4$mock_sample[i], present_species]))
+      res4$max_diff_positive[i] <- max(abs(matextra3[present_species, g] - 
+                                               mat[res4$mock_sample[i], present_species]))
+
+      res4$mean_diff_negative[i] <- mean(abs(matextra3[species_absent, g] - 
+                                          mat[res4$mock_sample[i], species_absent]))
+      res4$max_diff_negative[i] <- max(abs(matextra3[species_absent, g] - 
+                                            mat[res4$mock_sample[i], species_absent]))
+      
+      all_plants <- 1:nrow(mat)
+      plants_found <- which(mat[res4$mock_sample[i], ] > 0)
+      plants_in <- which(matextra3[, g] > 0)
+      tp = length(which(plants_found %in% plants_in))
+      tn = length(which(! all_plants %in% c(plants_found, plants_in)))
+      fp = length(which(! plants_found %in% plants_in))
+      fn = length(which( all_plants %in% plants_in & ! all_plants %in% plants_found))
+      
+      res4$TP[i] <- tp
+      res4$TN[i] <- tn
+      res4$FP[i] <- fp
+      res4$FN[i] <- fn
+      res4$specificity[i] <-  100 * tn/(tn + fp)
+      res4$sensitivity[i] <- 100 * tp/(tp+fn)
+      res4$PPV[i] <-100 * tp /(tp+fp)
+      res4$NPV[i] <- 100 * tn/(tn+fn)
+    }
+  }
+  return(res4)
+}
+
+getDotPlot<- function(res4, mattemp){
+  matextra <- mattemp[["matextra"]]
+  matextra[grepl("Poa", rownames(matextra)),] <- 0
+  rn <- rownames(matextra)
+
+  colnames(matextra) <- paste("mix_", colnames(matextra), sep="")
+  
+  names(res4) <- gsub("\\.", " ", names(res4)) %>% gsub(" $", ".", .)
+  resvert <- res4 %>% select(mock_sample, mock_mix, dilution, rownames(matextra)) %>% 
+    gather(species, proportion_found, rownames(matextra))
+  resvert$proportion_expected <- mapply(resvert$species, resvert$mock_mix, FUN=function(sp, mix)matextra[sp, mix])
+  write.table(resvert, "results_long_withexpected.csv", sep="\t", row.names = T, quote=F)
+  
+  lev <- sort(unique(resvert$mock_sample))
+  lev <- lev[c(4:length(lev), 1:3)]
+  resvert$species_mod <- ifelse(resvert$proportion_expected > 0, 
+                                resvert$species, "absent")
+  resvert$mock_sample <- factor(resvert$mock_sample, 
+                                   levels = lev)
+  
+  lev <- sort(unique(resvert$mock_mix))
+  lev <- lev[c(1, 3:length(lev), 2)]
+  resvert$mock_mix <- factor(resvert$mock_mix, lev)
+  
+  #splabs <- paste("*",unique(resvert$species_mod), "*", sep="")
+ # splabs <- ifelse(splabs=="*absent*", "absent", splabs)
+  g1 <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
+                      col=species_mod, fill=species_mod))+
+    geom_point() +
+    geom_abline(slope = 1)+
+    xlab("Expected proportion") +
+    ylab("Obtained proportion") +
+    xlim(0, max(resvert$proportion_expected+0.05)) +
+    ylim(0, max(resvert$proportion_found+0.05)) +
+    mytheme
+  ggsave("corrplot1_sepNone_colSpecies.pdf", g1, width = 10, height = 7)
+  
+  g1b <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
+                            col=mock_mix, fill=mock_mix, shape=dilution))+
+    geom_point() +
+    geom_abline(slope = 1)+
+    xlab("Expected proportion") +
+    ylab("Obtained proportion") +
+    xlim(0, max(resvert$proportion_expected+0.05)) +
+    ylim(0, max(resvert$proportion_found+0.05)) +
+    mytheme
+  ggsave("corrplot1_sepNone_colSample.pdf", g1b, width = 10, height = 7)
+  
+  g2 <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
+                            col=species_mod, fill=species_mod))+
+    facet_wrap(.~ mock_sample)+
+    geom_point() +
+    geom_abline(slope = 1)+
+    xlab("Expected proportion") +
+    ylab("Obtained proportion") +
+    xlim(0, max(resvert$proportion_expected+0.05)) +
+    ylim(0, max(resvert$proportion_found+0.05)) +
+    #scale_fill_discrete(
+    #  "Species",
+    #  breaks = c(0:(length(splabs)-1)),
+    #  labels = splabs
+    #) +
+    mytheme #+
+    #theme(legend.text = element_markdown()) 
+  ggsave("corrplot2_sepSample_colSpecies.pdf", g2, width = 10, height = 7)
+  
+  g2b <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
+                             col=mock_mix, fill=mock_mix, shape=dilution))+
+    facet_wrap(.~ species_mod)+
+    geom_point() +
+    geom_abline(slope = 1)+
+    xlab("Expected proportion") +
+    ylab("Obtained proportion") +
+    xlim(0, max(resvert$proportion_expected+0.05)) +
+    ylim(0, max(resvert$proportion_found+0.05)) +
+    mytheme
+  ggsave("corrplot2b_sepSpecies_colSample.pdf", g2b, width = 10, height = 7)
+  
+  g2c <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
+                             col=mock_mix, fill=mock_mix, shape=dilution))+
+    facet_wrap(.~ species)+
+    geom_point() +
+    geom_abline(slope = 1)+
+    xlab("Expected proportion") +
+    ylab("Obtained proportion") +
+    xlim(0, max(resvert$proportion_expected+0.05)) +
+    ylim(0, max(resvert$proportion_found+0.05)) +
+    mytheme
+  ggsave("corrplot2c_sepSpeciesAll_colSample.pdf", g2c, width = 16, height = 16)
+  
+  g2d <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
+                            col=species_mod, fill=species_mod, grou, shape=dilution))+
+    facet_wrap(.~ mock_mix, nrow=2)+
+    geom_point() +
+    geom_abline(slope = 1)+
+    xlab("Expected proportion") +
+    ylab("Obtained proportion") +
+    xlim(0, max(resvert$proportion_expected+0.05)) +
+    ylim(0, max(resvert$proportion_found+0.05)) +
+    mytheme
+  ggsave("corrplot2d_sepMix_colSpecies.pdf", g2d, width = 12, height = 6)
+  
+  g2e <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
+                             col=species_mod, fill=species_mod, grou))+
+    facet_wrap(.~ dilution)+
+    geom_point() +
+    geom_abline(slope = 1)+
+    xlab("Expected proportion") +
+    ylab("Obtained proportion") +
+    xlim(0, max(resvert$proportion_expected+0.05)) +
+    ylim(0, max(resvert$proportion_found+0.05)) +
+    mytheme
+  ggsave("corrplot2e_sepDil_colSpecies.pdf", g2e, width = 10, height = 4)
+  
+  #Barplot combining Agrostis
+  resvert2 <- resvert %>% 
+    gather(type, proportion, proportion_expected, proportion_found) %>% 
+    distinct() %>%
+    mutate(mock_sample2 = ifelse(type == "proportion_expected", as.character(mock_mix), as.character(mock_sample)),
+           dilution = ifelse(type == "proportion_expected", "Exp", 
+                             as.character(dilution)),
+           )
+  rag <- resvert2[grepl("Agrostis", resvert2$species_mod), ]
+  rag$species <- "Agrostis"
+  rag$species_mod <- "Agrostis"
+  
+  rag_exp <- rag %>% filter(type=="proportion_expected") %>% distinct()
+  rag_obs<- rag %>% filter(type!="proportion_expected") %>% 
+    group_by(mock_sample, mock_mix, dilution, species, species_mod, type, mock_sample2) %>% 
+    summarise(proportion=sum(proportion))
+  rag_obs <- rag_obs[, names(rag)]
+  rag <- rbind(as.data.frame(rag_obs), as.data.frame(rag_exp))
+  resvert3 <- rbind(resvert2[!grepl("Agrostis", resvert2$species_mod), ], rag)
+  #Re-normalize expected pcts
+  rev_allexp <- resvert3[resvert3$type == "proportion_expected", ] %>% 
+    group_by(mock_mix) %>% 
+    mutate(proportion = proportion/(sum(proportion))) %>% 
+    as.data.frame()
+  
+  resvert4 <- rbind(resvert3[resvert3$type != "proportion_expected", ] , rev_allexp)
+  
+  g3 <- ggplot(resvert4, aes(y = proportion, x=dilution, fill=species_mod))+
+    facet_wrap(. ~ mock_mix, scales = "free_x")+
+    geom_bar(stat = "identity") +
+    mytheme
+  ggsave("barplot.pdf", g3, width = 10, height = 7)
+}
 #setwd("/home/carmoma/projects/pollen/downloaded_bam/tmp/merge")
 
-bad_samples <- c("FAR74611-1-NB02", "FAR74611-1-NB03", "FAR76967-1-NB01")
+################################ READ DATA #############################
+
 mock_species <- read_tsv("~/projects/pollen/METADATA/mock_composition.tsv")
 splist <- mock_species$Spp
 genus <- sapply(splist, FUN=function(x){strsplit(x, " ")[[1]][1]}) %>% unique
@@ -20,255 +455,75 @@ mocksamplenum$rep <- gsub("[0-9]+", "", mocksamplenum$Mock_commiunity)
 mocksamplenum$mix <- paste("mix_", gsub("[A-Z]", "", mocksamplenum$Mock_commiunity), sep="")
 mocksamplenum$proj2 <- barcodes$PROJ2[match(mocksamplenum$EASI_ID, barcodes$ASSAMPLE)]
 
-#setwd("~/projects/pollen/results/mock_nofilt1/mock_nofilt_all")
-#setwd("/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/")
-#setwd("/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/coverage")
-#setwd("/home/carmoma/projects/pollen/results/mock_nofilt1/mock_nofilt_all")
-#setwd("~/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults01")
-setwd("/home/carmoma//projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults10")
+setwd("/home/carmoma//projects/pollen/results/")
+# Make sure to perform sed -i "s/#//"  before reading tables, there is a # name in header
+dirlist <- c( "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults01",
+             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults05",
+            "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults10",
+            "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults15",
+            "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults10",
+             "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults01",
+             "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults05",
+             "/home/carmoma/projects/pollen/results/mock_ontfilt_samfilt/diff_thresholds/binresults15",
+             "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults01",
+             "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults05",
+             "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults10",
+             "/home/carmoma/projects/pollen/results/mock_nofilt1/all_results/binresults15",
+             "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults01",
+             "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults05",
+             "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults10",
+             "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults15",
+             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults01",
+             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults05",
+             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults10",
+             "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults15"
+             )
 
-PERC_LIM <- 10
+PERC_LIM <- 0.01
 MIN_PERC_SP <- 0.01
-
-f <- list.files(pattern="_all.csv")
-
-res <- data.frame()
-for(ont in f){
-  cat(ont, "\n")
-  a <- read.table(ont, sep="\t", head=T, stringsAsFactors = F)
-  a <- a %>% group_by(rname) %>% 
-    top_n(n = 1, wt = coverage) %>% 
-    ungroup
-  b <- table(a$rname)
-  b <- b[b > 1]
-  a <- a[!a$rname %in% names(b), ]
-  res <- rbind(res, a)
-}
-
-write.table(res, "ALL_READS_BINNED.csv", sep="\t", row.names = F, quote=F)
-#res <- read.table("ALL_READS_BINNED.csv", head=T, sep="\t", stringsAsFactors=F)
-#res2 <- res %>% 
-#  group_by(ont_sample, read_id) %>% 
-#  top_n(n = 1, wt = pct_covered)
 
 #REMOVE READS WITH LESS THAN 15% OF THEIR LENGTH COVERED
 
-res$binned_species2 <- mapply(res$ILLUMINA, res$coverage, FUN=function(sp, pc) ifelse(pc < PERC_LIM, "Unassigned", sp))
-#res$binned_speces <- res$species
-#CALCULATE PERCENTAGE OF SPECIES
-res3 <- res %>% group_by(ONT) %>% 
-  mutate(n_ont_including_unassigned = n()) %>% 
-  filter(binned_species2 != "Unassigned") %>% 
-  mutate(n_ont = n()) %>% 
-  group_by(ONT, binned_species2) %>% 
-  summarise(n_species = n(),
-            n_ont = unique(n_ont),
-            n_ont_including_unassigned = unique(n_ont_including_unassigned)) %>% 
-  mutate(species = binned_species2,
-         pct_species = n_species / n_ont) %>% 
-  mutate(
-         pct_species_trimmed = ifelse(pct_species < MIN_PERC_SP, 0, pct_species),
-         pct_species_trimmed = pct_species_trimmed/sum(pct_species_trimmed),
-         species_ref = species,
-         species_num = as.numeric(gsub("AS0", "", species)),
-         species = spnames$Species[match(species_num, spnames$EASI_ID)],
-         mock_sample = mocksamplenum$Mock_commiunity[match(ONT, mocksamplenum$proj2)],
-         mock_mix = mocksamplenum$mix[match(ONT, mocksamplenum$proj2)],
-         dilution = mocksamplenum$rep[match(ONT, mocksamplenum$proj2)]
-         )
+all_res4 <- data.frame()
+for(resultsdir in dirlist){
+  setwd(resultsdir)
+  res <- read_all_bin_csvs(recycle=TRUE)
+  res$binned_species2 <- mapply(res$ILLUMINA, res$coverage, FUN=function(sp, pc) ifelse(pc < PERC_LIM, "Unassigned", sp))
 
-head(res3)
-write.table(res3, "percents_10_1_norm.csv", sep="\t", row.names = F, quote = F)
-#res3<- read.table("res3_partial_summary_mock.csv", head=T, sep="\t")
+  #CALCULATE PERCENTAGE OF SPECIES
+  res3 <- getSpeciesSummary(res)
+  res4 <- spread2matrixshape(res3)
+  mattemp <- buildMatrix(res4, mock_species2)
+  res4 <- getCorrelations(res4, mattemp, mock_species, mock_species2)
+  res4$condition <- resultsdir 
+  write.table(res4, "results_with_correlation.csv", sep="\t", quote=F, row.names = F)
+  all_res4 <- rbind(all_res4, res4)
+  
+  res2write <- as.data.frame(round(mattemp[["mat"]]*100, 3))
+  write.table(res2write, "results_matrix.csv", sep="\t", row.names = T, quote=F)
 
-#Only species in mock samples
-#res3 <- res3 %>% filter(species %in% spnames$Species[spnames$present_mock != "absent"])
+  res2write_trim <- res2write[, names(res2write)%in% spnames$Species[spnames$present_mock != "absent"]]
+  write.table(res2write_trim, "results_matrix_presentonly.csv", sep="\t", row.names = T, quote=F)
 
-res4 <- res3 %>% 
-  select(mock_sample, mock_mix, dilution, species, pct_species_trimmed) %>% 
-  spread(species, pct_species_trimmed)  %>% 
-  data.frame %>% select(-ONT)
+  makePvclust(mat)
+  makeAllHeatmaps(mattemp)
+  getDotPlot(res4, mattemp)
 
-mat <- res4 %>% select_if(is.numeric) %>% as.matrix
-mat[is.na(mat)] <- 0
-rownames(mat) <- res4$mock_sample
-
-colnames(mat) <- gsub("\\.", " ", colnames(mat)) %>% gsub(" $", ".", .)
-
-#apply(mat, MAR=1, sum)
-#mat2 <- mat[, apply(mat, MAR=2, FUN=function(x)any(x>0))]
-#mat2 <- apply(mat, MAR=1, FUN=function(x){x/sum(x)})
-#mat2 <- t(mat2)
-#apply(mat2, MAR=1, sum)
-#mat <- mat2
-
-ann <- data.frame(mix = as.factor(gsub("mix_", "", res4$mock_mix)), 
-                  dilution = res4$dilution)
-names(ann)[1] <- "mock group"
-rownames(ann) <- rownames(mat)
-#annsp <- data.frame(presence = spnames$present_mock[match(colnames(mat), spnames$Species) ])
-#names(annsp)[1] <- "species presence"
-#rownames(annsp) <- colnames(mat)
-#
-ord <- order(rownames(mat))
-ord <- ord[c(4:length(ord), 1:3)]
-mat <- mat[ord, ]
-ann <- ann[ord, ]
-
-#pdf("mock_ontfilt1.pdf")
-#x <-hclust(t(dist(mat, method = "canberra")))
-pvc <- pvclust(t(mat), method.dist = "canberra")
-pdf("pvclust_mock.pdf")
-plot(pvc)
-dev.off()
-
-dev.off()
-
-spsitalic <-sapply(
-  colnames(mat),
-  function(x) bquote(italic(.(x))))
-
-#Crear matriz adyacente con los datos mock
-matextra <- matrix(numeric(length(unique(res4$mock_mix))*ncol(mat)), nrow=ncol(mat))
-rownames(matextra) <- colnames(mat)
-for (n in mock_species2$Spp){
-  matextra[n, ] <- unlist(mock_species2[mock_species2$Spp == n, names(mock_species2) %in% res4$mock_mix])
 }
-colnames(matextra) <- as.factor(as.character(1:10))
-matextra <- as.data.frame(matextra)
 
+setwd("/home/carmoma//projects/pollen/results/")
+write.table(all_res4, "221231_allresults.csv", sep="\t", quote=F, row.names = F)
 
-p <- pheatmap(t(mat), 
-         annotation_col = ann, 
-#         annotation_row = annsp,  
-         filename = "partial_mock_samples_all_15_1_norm_b.png", 
-         labels_row = as.expression(spsitalic),
-         angle_col=315,
-         width = 12, height = 8)
-dev.off()
-p <- pheatmap(t(mat), 
-              annotation_col = ann, 
-#              annotation_row = matextra,
-              filename = "partial_mock_samples_all_10_1_norm_b_noclust.png", 
-              labels_row = as.expression(spsitalic),
-              cluster_cols = F,
-              gaps_col = seq(3, nrow(mat)-1, by=3),
-              angle_col=315,
-              width = 12, height = 8)
-
-dev.off()
-p
-#Only species of interest
-matcut <- mat[ , colnames(mat) %in% mock_species2$Spp]
-
-p <- pheatmap(t(matcut), 
-         annotation_col = ann, 
-        # annotation_row = annsp,
-         filename = "partial_mock_samples_all_15_1_norm_b_selectedspecies.png", 
-         labels_row = as.expression(spsitalic),
-         angle_col=315,
-         width = 12, height = 8)
-dev.off()
-p
-p <- pheatmap(t(matcut), 
-              annotation_col = ann, 
-              #annotation_row = annsp,
-              filename = "partial_mock_samples_all_15_1_norm_b_selectedspecies_noclust.png", 
-              labels_row = as.expression(spsitalic),
-              cluster_cols = F,
-              gaps_col = seq(3, nrow(mat)-1, by=3),
-              angle_col=315,
-              width = 12, height = 8)
-dev.off()
-p
-res2write <- as.data.frame(round(mat*100, 3))
-write.table(res2write, "Mock_results_1_cov15_sp1.csv", sep="\t", row.names = T, quote=F)
-
-res2write_trim <- res2write[, names(res2write)%in% spnames$Species[spnames$present_mock != "absent"]]
-write.table(res2write_trim, "Mock_results_1_cov15_sp1_trim.csv", sep="\t", row.names = T, quote=F)
-
-mat2 <- t(mat) %>% as.data.frame
-colnames(mat2) <- paste("sample ", colnames(mat2), sep="")
-matextra2 <- matextra
-colnames(matextra2) <- paste("mix ", colnames(matextra), sep = "")
-
-mergedmat <- data.frame(species = rownames(mat2))
-for(g in colnames(matextra2)){
-  mergedmat[, g] <- matextra2[, g]
-  samples <- which(as.character(ann$`mock group`) == gsub("mix ", "", g))
-  mergedmat <- cbind(mergedmat, mat2[, samples])
-}
-mergedmat2 <- as.matrix(mergedmat[, 2:ncol(mergedmat)])
-
-genus_species <- sapply(rownames(mergedmat2), FUN=function(x){strsplit(x, " ")[[1]][1]})
-ann_species <- data.frame(present = ifelse(rownames(mergedmat2) %in% splist, "species", 
-                          ifelse(genus_species %in% genus, "genus", "absent")
-                          ))
-
-
-rownames(ann_species) <- rownames(mergedmat)
-
-ann2 <- data.frame(dilution = rep(c("theoretical %", "dil A", "dil B", "dil C"), dim(mergedmat2)[2]/4))
-rownames(ann2) <- colnames(mergedmat2)
-
-
-p <- pheatmap(mergedmat2, 
-              annotation_col = ann2, 
-              annotation_row = ann_species,
-              filename = "heatmap_with_mix.png", 
-              labels_row = as.expression(spsitalic),
-              cluster_cols = F,
-              gaps_col = seq(4, nrow(mergedmat2)-1, by=4),
-              angle_col=315,
-              width = 14, height = 8)
-dev.off();p
-# Correlations 
-matextra3 <- matextra
-colnames(matextra3) <- paste("mix_", colnames(matextra3), sep="")
-
-for(g in colnames(matextra3)){
-  ind = which(res4$mock_mix == g)
-  for(i in ind){
-  res4$correlation[i] <- cor(matextra3[, g], mat[res4$mock_sample[i], ])
-  res4$correlation_present[i] <- cor(matextra3[mock_species2$Spp, g], mat[res4$mock_sample[i], mock_species2$Spp])
-  }
-}
-write.table(res4, "results_with_correlation.csv", sep="\t", quote=F, row.names = F)
-res_nofilt <- res4
-mean(res4$correlation)
-
-#0.5349616 ont filt + no sam filt 1% covered
-#0.7569506  ont filt + no sam filt 5% covered
-#0.7550329 ont filt + no sam filt 10% covered
-#0.7517308 ont filt + no sam filt 15% covered
-
-# 0.47798 filt ont filt +  sam filt 1% covered
-# 0.7576867 filt ont filt +  sam filt 5% covered
-# 0.7544688 filt ont filt +  sam filt 10% covered
-#0.750 filt ont filt + sam filt 15% covered
-
-#0.751728 no ont filt + no sam filt 15% covered
-
-mean(res4$correlation_present)
-# 0.631657  ont filt + no sam filt 1% covered
-#0.6527326 ont filt + no sam filt 5% covered
-#0.6490048 ont filt + no sam filt 10% covered
-#0.645 ont filt + no sam filt 15% covered
-
-# 0.6538847 ont filt +sam filt 1% covered
-# 0.652368 ont filt +  sam filt 5% covered
-#0.6466251 ont filt +  sam filt 10% covered
-# 0.64 ont filt +sam filt 15% covered
-
-# 0.6463454 no ont filt + no sam filt 15% covered
-
-##Dendograms
-library(dendextend)
-
-dend <- hclust(dist(as.matrix(t(matextra))))
-dend2 <- hclust(dist(as.matrix(t(mat2))))
-dl <- dendlist(dend, dend2)
-
-
-library(pvclust)
-pvc <- pvclust(mat, method.dist = "canberra")
+auxsum <- all_res4 %>% 
+  group_by(condition) %>% 
+  select(correlation, 
+        correlation_present, 
+        mean_diff, mean_diff_positive,
+        mean_diff_negative, 
+        max_diff_positive, 
+        max_diff_negative, 
+        TP, TN, FP, FN, 
+        specificity, sensitivity, PPV, NPV
+    ) %>% 
+  summarise_all(mean)
+write.table(auxsum, "221231_allsummary.csv", sep="\t", quote=F, row.names = F)

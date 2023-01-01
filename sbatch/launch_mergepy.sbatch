@@ -16,4 +16,5 @@ echo $1
 python merge_coverages.py -m 10 -n 100 -p $1 -o binresults10
 python merge_coverages.py -m 1 -n 100 -p $1 -o binresults01
 python merge_coverages.py -m 5 -n 100 -p $1 -o binresults05
+python merge_coverages.py -m 15 -n 100 -p $1 -o binresults15
 
