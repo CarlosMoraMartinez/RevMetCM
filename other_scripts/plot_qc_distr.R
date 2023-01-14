@@ -44,7 +44,7 @@ g1 <- ggplot(df, aes(x=mapq, col=alignment, linetype=alignment))+
   theme(legend.position = c(0.8, 0.93))
  g1
  
- ggsave("density_FAR74611_NB01_mapq.pdf", g1, width=12, height = 7)
+ ggsave("density_FAR74611_NB01_mapq_s.pdf", g1, width=8, height = 5)
  
  
  

@@ -23,7 +23,6 @@ process filterOntReads {
   outfile=$(basename -s .fastq.gz !{ont_file} | sed "s/_/-/g")
   filtlong --min_length !{min_length} --min_mean_q !{min_mean_q} !{ont_file} | gzip > $outfile'.trim.fastq.gz'
   '''
-
 }
 
 process makeFastaFromFastq {
@@ -152,6 +151,55 @@ process taxonFilterOnt {
   '''
 }
 
+process organelleGenomeIndex {
+  label 'ont07_organelleFilterOnt'
+  conda params.organelleFilter.conda
+  cpus params.resources.organelleFilterIndex.cpus
+  memory params.resources.organelleFilterIndex.mem
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  maxRetries 10
+  publishDir "$results_dir/ont07_organelleFilterOnt", mode: 'symlink'
+
+  input:
+  path fasta
+  
+  output:
+  path("*.mmi")
+
+  shell:
+  '''
+  outfile=$(basename -s .fna.gz !{fasta})'.mmi'
+  
+  minimap2 -x sr -d $outfile !{fasta}
+  '''
+}
+
+process organelleFilterOnt {
+  label 'ont08_organelleFilterOnt'
+  conda params.organelleFilter.conda
+  cpus params.resources.organelleFilter.cpus
+  memory params.resources.organelleFilter.mem
+  errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
+  maxRetries 10
+  publishDir "$results_dir/ont08_organelleFilterOnt", mode: 'symlink'
+
+  input:
+  path index
+  path fastq
+  
+  output:
+  path("*.nuc.fastq.gz")
+
+  shell:
+  '''
+  outfile=$(basename -s .fastq.gz !{fastq})'.nuc.fastq.gz'
+  
+  minimap2 -t !{params.resources.organelleFilter.cpus} -ax sr !{index} !{fastq} | samtools view -f 4 | cut -f 1 > ids.txt
+  seqtk subseq !{fastq} ids.txt | gzip > $outfile
+
+  '''
+}
+
 workflow ont2fasta {
   take: ch_ont
   main:
@@ -168,6 +216,19 @@ workflow ont2fasta {
         //.view{ "ONT fastq filtered by taxon: $it" }
       ch_taxons_ont = taxonFilterOnt.out.map{it -> it[0]}
         //.view{ "ONT taxon composition: $it" }
+    }
+    if(params.organelleFilter.do_filter){
+      if(params.organelleFilter.from_fasta){
+        organelleGenomeIndex(params.organelleFilter.db)
+        ch_organelle_index = organelleGenomeIndex.out
+      }else{
+        ch_organelle_index = params.organelleFilter.index
+      }
+      //ch_organelle_index.combine(ch_organelle_index, ch_ont)
+      //  .view{ "ONT organelle filter input: $it" }
+      organelleFilterOnt(ch_organelle_index, ch_ont)
+      ch_ont = organelleFilterOnt.out
+      .view{ "ONT organelle filter output: $it" }
     }
 
     makeFastaFromFastq(ch_ont)

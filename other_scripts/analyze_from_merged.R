@@ -16,8 +16,7 @@ mytheme <-  theme_bw()+
                                     colour = "black", angle = 0, face = "bold")) +
   theme(strip.text.x = element_text(size = 12, 
                                     colour = "black", angle = 0, face = "bold")) +
-  theme(axis.text.x = element_text(vjust = 1, 
-                                   hjust = 1, size = 14, 
+  theme(axis.text.x = element_text(size = 11, 
                                    colour = "black", angle = 0, 
                                    face = "bold"))+
   theme(axis.title.x = element_text(vjust = 1, hjust = 0.5, 
@@ -177,7 +176,7 @@ buildMatrix <- function(res4, mock_species2){
 
 makePvclust <- function(mat){
   pvc <- pvclust(t(mat), method.dist = "canberra")
-  pdf("pvclust.pdf")
+  pdf("pvclust_canberra.pdf")
   plot(pvc)
   dev.off()
   #tryCatch(dev.off(),cat(" device already closed. "))
@@ -273,7 +272,7 @@ getCorrelations<-function(res4, mattemp, mock_species, mock_species2){
     for(i in ind){
       res4$correlation[i] <- cor(matextra3[, g], mat[res4$mock_sample[i], ])
       res4$correlation_present[i] <- cor(matextra3[present_species, g], mat[res4$mock_sample[i], present_species])
-      
+      res4$total_negative[i] <- sum(mat[res4$mock_sample[i], species_absent])      
       res4$mean_diff[i] <-  mean(abs(matextra3[, g] - mat[res4$mock_sample[i], ]))
       res4$mean_diff_positive[i] <- mean(abs(matextra3[present_species, g] - 
                                                   mat[res4$mock_sample[i], present_species]))
@@ -284,6 +283,7 @@ getCorrelations<-function(res4, mattemp, mock_species, mock_species2){
                                           mat[res4$mock_sample[i], species_absent]))
       res4$max_diff_negative[i] <- max(abs(matextra3[species_absent, g] - 
                                             mat[res4$mock_sample[i], species_absent]))
+
       
       all_plants <- 1:nrow(mat)
       plants_found <- which(mat[res4$mock_sample[i], ] > 0)
@@ -316,7 +316,10 @@ getDotPlot<- function(res4, mattemp){
   names(res4) <- gsub("\\.", " ", names(res4)) %>% gsub(" $", ".", .)
   resvert <- res4 %>% select(mock_sample, mock_mix, dilution, rownames(matextra)) %>% 
     gather(species, proportion_found, rownames(matextra))
-  resvert$proportion_expected <- mapply(resvert$species, resvert$mock_mix, FUN=function(sp, mix)matextra[sp, mix])
+  resvert$proportion_expected <- mapply(resvert$species, resvert$mock_mix, 
+                                        FUN=function(sp, mix)matextra[sp, mix])
+  resvert$proportion_found[is.na(resvert$proportion_found)] <- 0
+  resvert$mock_mix <- factor(gsub("_", " ", as.character(resvert$mock_mix)))
   write.table(resvert, "results_long_withexpected.csv", sep="\t", row.names = T, quote=F)
   
   lev <- sort(unique(resvert$mock_sample))
@@ -332,6 +335,13 @@ getDotPlot<- function(res4, mattemp){
   
   #splabs <- paste("*",unique(resvert$species_mod), "*", sep="")
  # splabs <- ifelse(splabs=="*absent*", "Other (false positive)", splabs)
+  agr <- resvert %>% filter(grepl("Agrostis", species)) %>% 
+    group_by(mock_sample, mock_mix, dilution) %>% 
+    summarise(species = "Agrostis total", species_mod = "Agrostis total",
+              proportion_found = sum(proportion_found),
+              proportion_expected = unique(proportion_expected))
+  agr <- agr[, names(resvert)]
+  
   g1 <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
                       col=species_mod, fill=species_mod))+
     geom_point() +
@@ -342,7 +352,7 @@ getDotPlot<- function(res4, mattemp){
     ylim(0, max(resvert$proportion_found+0.05)) +
     scale_colour_muted() +
     mytheme
-  ggsave("corrplot1_sepNone_colSpecies.pdf", g1, width = 10, height = 7)
+  ggsave("corrplot1_sepNone_colSpecies.png", g1, width = 10, height = 7)
   
   g1b <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
                             col=mock_mix, fill=mock_mix, shape=dilution))+
@@ -353,7 +363,7 @@ getDotPlot<- function(res4, mattemp){
     xlim(0, max(resvert$proportion_expected+0.05)) +
     ylim(0, max(resvert$proportion_found+0.05)) +
     mytheme
-  ggsave("corrplot1_sepNone_colSample.pdf", g1b, width = 10, height = 7)
+  ggsave("corrplot1_sepNone_colSample.png", g1b, width = 10, height = 7)
   
   g2 <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
                             col=species_mod, fill=species_mod))+
@@ -370,9 +380,15 @@ getDotPlot<- function(res4, mattemp){
     #  breaks = c(0:(length(splabs)-1)),
     #  labels = splabs
     #) +
-    mytheme #+
+    mytheme +
+    theme(axis.text.x = element_text(size = 9, 
+                                     colour = "black", angle = 0, 
+                                     face = "bold"))+
+    theme(axis.text.y = element_text( size = 9, 
+                                     colour = "black", angle = 0, 
+                                     face = "bold"))
     #theme(legend.text = element_markdown()) 
-  ggsave("corrplot2_sepSample_colSpecies.pdf", g2, width = 10, height = 7)
+  ggsave("corrplot2_sepSample_colSpecies.png", g2, width = 12, height = 7)
   
   g2b <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
                              col=mock_mix, fill=mock_mix, shape=dilution))+
@@ -383,9 +399,29 @@ getDotPlot<- function(res4, mattemp){
     ylab("Obtained proportion") +
     xlim(0, max(resvert$proportion_expected+0.05)) +
     ylim(0, max(resvert$proportion_found+0.05)) +
-    mytheme
-  ggsave("corrplot2b_sepSpecies_colSample.pdf", g2b, width = 10, height = 7)
+    scale_fill_tofino(discrete=T)+
+    mytheme +
+    theme(strip.text.y = element_text(size = 12, 
+                                      colour = "black", angle = 0, face = "italic")) 
+  ggsave("corrplot2b_sepSpecies_colSample.png", g2b, width = 10, height = 7)
+
+  resvertAgr <- rbind(as.data.frame(resvert),as.data.frame(agr)) %>% filter(species_mod != "Other (false positive)")
+  g2b2 <- ggplot(resvertAgr, aes(x=proportion_expected, y=proportion_found, 
+                             col=mock_mix, fill=mock_mix, shape=dilution))+
+    facet_wrap(.~ species_mod)+
+    geom_point() +
+    geom_abline(slope = 1)+
+    xlab("Expected proportion") +
+    ylab("Obtained proportion") +
+    xlim(0, max(resvert$proportion_expected+0.05)) +
+    ylim(0, max(resvert$proportion_found+0.05)) +
+    scale_fill_tofino(discrete=T)+
+    mytheme +
+    theme(strip.text.y = element_text(size = 12, 
+                                      colour = "black", angle = 0, face = "italic")) 
+  ggsave("corrplot2b_sepSpecies_colSample_AgrostisSum.png", g2b2, width = 10, height = 7)
   
+    
   g2c <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
                              col=mock_mix, fill=mock_mix, shape=dilution))+
     facet_wrap(.~ species)+
@@ -396,7 +432,7 @@ getDotPlot<- function(res4, mattemp){
     xlim(0, max(resvert$proportion_expected+0.05)) +
     ylim(0, max(resvert$proportion_found+0.05)) +
     mytheme
-  ggsave("corrplot2c_sepSpeciesAll_colSample.pdf", g2c, width = 16, height = 16)
+  ggsave("corrplot2c_sepSpeciesAll_colSample.png", g2c, width = 16, height = 16)
   
   g2d <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
                             col=species_mod, fill=species_mod, grou, shape=dilution))+
@@ -408,8 +444,14 @@ getDotPlot<- function(res4, mattemp){
     xlim(0, max(resvert$proportion_expected+0.05)) +
     ylim(0, max(resvert$proportion_found+0.05)) +
     scale_colour_muted() +
-    mytheme
-  ggsave("corrplot2d_sepMix_colSpecies.pdf", g2d, width = 12, height = 6)
+    mytheme +
+    theme(axis.text.x = element_text(size = 10, 
+                                     colour = "black", angle = 0, 
+                                     face = "bold"))+
+    theme(axis.text.y = element_text( size = 10, 
+                                     colour = "black", angle = 0, 
+                                     face = "bold"))
+  ggsave("corrplot2d_sepMix_colSpecies.png", g2d, width = 12, height = 6)
   
   g2e <- ggplot(resvert, aes(x=proportion_expected, y=proportion_found, 
                              col=species_mod, fill=species_mod, grou))+
@@ -421,8 +463,14 @@ getDotPlot<- function(res4, mattemp){
     xlim(0, max(resvert$proportion_expected+0.05)) +
     ylim(0, max(resvert$proportion_found+0.05)) +
     scale_colour_muted() +
-    mytheme
-  ggsave("corrplot2e_sepDil_colSpecies.pdf", g2e, width = 10, height = 4)
+    mytheme+
+    theme(axis.text.x = element_text(size = 11, 
+                                     colour = "black", angle = 0, 
+                                     face = "bold"))+
+    theme(axis.text.y = element_text( size = 11, 
+                                      colour = "black", angle = 0, 
+                                      face = "bold"))
+  ggsave("corrplot2e_sepDil_colSpecies.png", g2e, width = 10, height = 4)
   
   #Barplot combining Agrostis
   resvert2 <- resvert %>% 
@@ -432,6 +480,7 @@ getDotPlot<- function(res4, mattemp){
            dilution = ifelse(type == "proportion_expected", "Exp", 
                              as.character(dilution)),
            )
+  #Yes, the operation is repeated
   rag <- resvert2[grepl("Agrostis", resvert2$species_mod), ]
   rag$species <- "Agrostis"
   rag$species_mod <- "Agrostis"
@@ -458,7 +507,121 @@ getDotPlot<- function(res4, mattemp){
     geom_bar(stat = "identity") +
     scale_fill_bright()+
     mytheme
-  ggsave("barplot.pdf", g3, width = 10, height = 7)
+  ggsave("barplot.png", g3, width = 10, height = 7)
+  
+  resvert_f <- resvert4 %>% filter(species_mod == "Other (false positive)" & dilution != "Exp")
+  mins <- resvert_f %>% group_by(species) %>% summarise(maxp = max(proportion)) %>% 
+    filter(maxp > 0)
+  resvert_f <- resvert_f %>% filter(species %in% mins$species)
+  
+  g4 <- ggplot(resvert_f, aes(y = proportion, x=dilution, fill=species))+
+    facet_wrap(. ~ mock_mix, scales = "free_x")+
+    geom_bar(stat = "identity") +
+    scale_fill_tofino(discrete=T)+
+    mytheme
+  ggsave("barplot_falsePositives.png", g4, width = 10, height = 7)
+  
+  #Finally, dot plots:
+  present <- resvert$species[resvert$proportion_expected > 0] %>% unique
+  genus_present <-  sapply(present, FUN=function(x)strsplit(x, " ")[[1]][1]) %>% unique
+  resvert$`genus` <- sapply(resvert$species, FUN=function(x)strsplit(x, " ")[[1]][1])
+  resvert$present <- ifelse(resvert$species %in% present & resvert$genus != "Agrostis",
+                            "present", 
+                            ifelse(resvert$genus %in% genus_present, "genus present", "absent"))
+  resvert$`plant present` <- ifelse(resvert$proportion_expected==0 & resvert$proportion_found > 0,
+                                   "false positive", "true positive")
+  resvert$orderval <- ifelse(resvert$present=="absent",
+                             -resvert$proportion_found, resvert$proportion_found)
+  resord <- resvert %>% group_by(species) %>% summarise(m=mean(orderval))
+  resord <- resord[order(resord$m), ]
+  resvert$species <- factor(resvert$species, levels=resord$species)
+  
+  g5 <- ggplot(resvert, aes(y = species,x = mock_sample)) +     
+    facet_grid(.~ mock_mix, scales="free_x")+
+    geom_tile(fill="white") + 
+    geom_point(aes(colour = `plant present`, 
+                   size =proportion_found))  +  
+    scale_size(range = c(0, 8))+             ## to tune the size of circles
+    scale_colour_manual(values = c("firebrick3", "dodgerblue2")) +
+    mytheme +
+    theme(axis.text.y = element_text( face = "italic")) +
+    theme(
+          strip.background = element_blank())
+  ggsave("g5_dotplot1_byGroup.pdf", g5, width = 12, height = 8)
+  
+  resvert_theo <- resvert %>% group_by(mock_sample, mock_mix, dilution, 
+                                       species, species_mod, genus, present, 
+                                        `plant present`) %>% 
+    summarise(proportion_found = unique(proportion_expected), 
+              proportion_expected = unique(proportion_expected),
+              orderval = mean(orderval)) %>% 
+              mutate(`plant present` = "true positive") %>% 
+    mutate(mock_sample = mock_mix, type = "theoretical",
+           dilution="Exp.")
+  #resvert$`plant present`[resvert$proportion_expected == 0] <- "true positive"
+  resvert$type <- "retrieved"
+  resvert5 <- rbind(as.data.frame(resvert), as.data.frame(resvert_theo))
+  
+  lev <- unique(resvert5$mock_sample)
+  lev <- lev[c(31:40, 1:30)]
+  resvert5$mock_sample <- factor(resvert5$mock_sample, levels = lev)
+  resvert5$dilution <- factor(resvert5$dilution, levels = c("Exp.", "A", "B", "C"))
+  
+  g6 <- ggplot(resvert5, aes(y = species,x = dilution, fill=type)) +     
+    facet_grid(.~ mock_mix, scales="free_x")+
+    geom_tile() + 
+    scale_fill_manual(values = c("white", "grey83")) +
+    geom_point(aes(colour = `plant present`, 
+                   size =proportion_found))  +  
+    scale_size(range = c(0, 8))+             ## to tune the size of circles
+    scale_colour_manual(values = c("firebrick3", "dodgerblue2")) +
+    mytheme +
+    theme(axis.text.y = element_text( face = "italic")) +
+    theme(strip.background = element_blank())
+  ggsave("g6_dotplot1_byGroupWithTheo.pdf", g6, width = 13, height = 9)
+  
+  datamod <- resvert[as.character(resvert$species) %in% present,c("mock_sample", "mock_mix", 
+                                                                  "dilution", "species", 
+                                                                  "proportion_found", "proportion_expected")]
+  agr <- datamod[grepl("Agrostis", datamod$species),]
+  agr <- agr %>% 
+    mutate(species = "Agrostis") %>% 
+    group_by(mock_sample, mock_mix, dilution, species) %>% 
+    summarise(proportion_found = sum(proportion_found),
+           proportion_expected = unique(proportion_expected))
+  noagr <-  datamod[!grepl("Agrostis", datamod$species),]
+  datamod2 <- rbind(as.data.frame(agr), as.data.frame(noagr))
+  datamod2$diff <- datamod2$proportion_expected - datamod2$proportion_found
+  mod <- lm(diff ~  dilution + species,  data=datamod2)
+  
+  mod1 <- lm(proportion_found ~ proportion_expected + dilution * species,  data=datamod2) #R^2 0.71 
+  mod2 <- lm(proportion_found ~ proportion_expected + dilution + species,  data=datamod2) #R^2 0.71 
+  mod3 <- lm(proportion_found ~ proportion_expected  + species,  data=datamod2)#R^2 0.70 Adjusted
+  mod4 <- lm(proportion_found ~ proportion_expected ,  data=datamod2) #R^2 0.6
+  mod5 <- lm(proportion_found ~ dilution + proportion_expected ,  data=datamod2) #R^2 0.59 Adjusted
+  mod6 <- lm(proportion_found ~ species ,  data=datamod2) #R^2 0.14 adjusted
+ 
+  mod7 <- lm(proportion_found ~  dilution + species,  data=datamod2) #R^2 0.13
+  mod8 <- lm(proportion_found ~  dilution,  data=datamod2) #R^2 0
+
+  a0<-anova(mod1, mod2)# no sig -> factor dilucion no importante  
+  a1<-anova(mod2, mod3)# no sig -> factor dilucion no importante
+  a2<-anova(mod3, mod4) # sig -> factor espcie importante
+  a3<-anova(mod3, mod6) #sig -> factor esperado importante
+  
+  datamod2$predicted <- predict(mod1)
+  datamod2$diff <- abs(datamod2$proportion_found - datamod2$predicted)
+  
+  datamod_summary <- datamod2 %>% group_by(mock_sample, mock_mix, dilution) %>% 
+    summarise(mean_difference = mean(diff), 
+              correlation = cor(proportion_found, predicted))
+  write.table(datamod_summary, file="DifferenceAndCorrelationToPrediction.csv", sep="\t", row.names = F, quote=F)
+  models <- list(mod1, mod2, mod3, mod4, mod5, mod6, a1, a2, a3, datamod2, datamod_summary)
+  mean(datamod_summary$mean_difference) #0.05057
+  mean(datamod_summary$correlation) #0.8494
+
+  save(file="RegressionModels.RData", models)
+  #mod1: interaction significant for all
 }
 #setwd("/home/carmoma/projects/pollen/downloaded_bam/tmp/merge")
 
@@ -482,6 +645,10 @@ mocksamplenum$proj2 <- barcodes$PROJ2[match(mocksamplenum$EASI_ID, barcodes$ASSA
 setwd("/home/carmoma//projects/pollen/results/")
 # Make sure to perform sed -i "s/#//"  before reading tables, there is a # name in header
 dirlist <- c( 
+  "/home/carmoma/projects/pollen/results/kraken_dust_mapq6/binresults01",
+  "/home/carmoma/projects/pollen/results/kraken_dust_mapq6/binresults05",
+  "/home/carmoma/projects/pollen/results/kraken_dust_mapq6/binresults10",
+  "/home/carmoma/projects/pollen/results/kraken_dust_mapq6/binresults15",
   "/home/carmoma/projects/pollen/results/kraken_dust_noSamFilter/binresults01",
   "/home/carmoma/projects/pollen/results/kraken_dust_noSamFilter/binresults05",
   "/home/carmoma/projects/pollen/results/kraken_dust_noSamFilter/binresults10",
@@ -517,11 +684,7 @@ dirlist <- c(
   "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults01",
   "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults05",
   "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults10",
-  "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults15",
-  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults01",
-  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults05",
-  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults10",
-  "/home/carmoma/projects/pollen/results/mock_trimgalore1/binresults15"
+  "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholdsc"
              )
 
 PERC_LIM <- 0.01
@@ -546,24 +709,29 @@ for(resultsdir in dirlist){
   all_res4 <- rbind(all_res4, res4)
   
   res2write <- as.data.frame(round(mattemp[["mat"]]*100, 3))
-  write.table(res2write, "results_matrix.csv", sep="\t", row.names = T, quote=F)
+  write.table(res2write, "results_matrix_as_percent.csv", sep="\t", row.names = T, quote=F)
+  write.table(as.data.frame(mattemp[["mat"]]), "results_matrix.csv", sep="\t", row.names = T, quote=F)
 
   res2write_trim <- res2write[, names(res2write)%in% spnames$Species[spnames$present_mock != "Other (false positive)"]]
   write.table(res2write_trim, "results_matrix_presentonly.csv", sep="\t", row.names = T, quote=F)
 
-  #makePvclust(mat)
+  makePvclust(mattemp[["mat"]])
   makeAllHeatmaps(mattemp)
   getDotPlot(res4, mattemp)
 
 }
 
 setwd("/home/carmoma//projects/pollen/results/")
-write.table(all_res4, "230101_allresults3.csv", sep="\t", quote=F, row.names = F)
+write.table(all_res4, "230102_allresults_1percent.csv", sep="\t", quote=F, row.names = F)
+
+all_prev <- read.table("230102_allresults_1percent.csv", sep="\t", stringsAsFactors=F, head=T)
+#all_res4 <- rbind(all_prev, all_res4)
 
 auxsum <- all_res4 %>% 
   group_by(condition) %>% 
   select(correlation, 
         correlation_present, 
+        total_negative,
         mean_diff, mean_diff_positive,
         mean_diff_negative, 
         max_diff_positive, 
@@ -572,4 +740,5 @@ auxsum <- all_res4 %>%
         specificity, sensitivity, PPV, NPV
     ) %>% 
   summarise_all(mean)
-write.table(auxsum, "230101_allsummary3.csv", sep="\t", quote=F, row.names = F)
+write.table(auxsum, "230101_allsummary3_1percent.csv", sep="\t", quote=F, row.names = F)
+view(auxsum)
