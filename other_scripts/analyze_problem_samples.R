@@ -176,7 +176,7 @@ calc_diversity<-function(res4){
   mat <- res4 %>% select(-c(mock_sample, condition)) %>% as.matrix()
   rownames(mat) <- res4$mock_sample
   res4$`Shannon diversity index` <- apply(mat, MAR=1, diversity, index="shannon")
-  res4$sample <- res4$mock_sample %>% factor( levels=res4$sample[order(res4$sample)])
+  res4$sample <- res4$mock_sample %>% factor( levels=res4$mock_sample[order(res4$mock_sample)])
   #apply(mat, MAR=1, FUN=function(p)-sum(p[p!=0]*log(p[p!=0]))) # --> gives the same result
   gdiv <- ggplot(res4, aes(x=sample, y=`Shannon diversity index`,
                            fill=sample, col=sample, label=round(`Shannon diversity index`, 2)))+
@@ -270,6 +270,10 @@ dirlist <- c(
   "/home/carmoma/projects/pollen/results/problem_samples_1/binresults10",
   "/home/carmoma/projects/pollen/results/problem_samples_1/binresults15")
 
+dirlist <- c("/home/carmoma/projects/pollen/results/samples_nuclear1/binresults01",
+"/home/carmoma/projects/pollen/results/samples_nuclear1/binresults05",
+"/home/carmoma/projects/pollen/results/samples_nuclear1/binresults10",
+"/home/carmoma/projects/pollen/results/samples_nuclear1/binresults15")
 PERC_LIM <- 0.01
 MIN_PERC_SP <- 0.01
 
@@ -293,11 +297,13 @@ for(resultsdir in dirlist){
   res2write <- as.data.frame(round(mattemp*100, 3))
   write.table(res2write, "results_matrix_100.csv", sep="\t", row.names = T, quote=F)
 
-  #makePvclust(mat)
+  mat <- buildMatrix(res4, mock_species2 )
   getPCA(mat)
+  calc_diversity(res4)
   makeAllHeatmaps(mattemp)
   #getDotPlot(res4, mattemp)
   getBarPlot(res3, mattemp)
+  makePvclust(mat)
 
 }
 
@@ -305,7 +311,7 @@ for(resultsdir in dirlist){
 setwd("/home/carmoma//projects/pollen/results/")
 #all_prev <- read.table("230101_allresults3.csv", sep="\t", stringsAsFactors=F, head=T)
 #all_res4 <- rbind(all_prev, all_res4)
-write.table(all_res4, "230107_allresults_samples.csv", sep="\t", quote=F, row.names = F)
+write.table(all_res4, "230116_allresults_samples.csv", sep="\t", quote=F, row.names = F)
 
 #auxsum <- all_res4 %>% 
 #  group_by(condition) %>% 

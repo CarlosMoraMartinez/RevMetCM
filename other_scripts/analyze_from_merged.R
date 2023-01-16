@@ -6,6 +6,7 @@ library(pvclust)
 library(ggtext)
 library(khroma)
 
+#THIS IS THE MAIN SCRIPT FOR THE ANALYSIS OF REVMET RESULTS
 mytheme <-  theme_bw()+
   theme(plot.title = element_text(size = rel(1.5), hjust = 0.5,
                                   colour = "black", face = "bold")) +
@@ -645,6 +646,10 @@ mocksamplenum$proj2 <- barcodes$PROJ2[match(mocksamplenum$EASI_ID, barcodes$ASSA
 setwd("/home/carmoma//projects/pollen/results/")
 # Make sure to perform sed -i "s/#//"  before reading tables, there is a # name in header
 dirlist <- c( 
+  "/home/carmoma/projects/pollen/results/nuclear1/binresults01",
+  "/home/carmoma/projects/pollen/results/nuclear1/binresults05",
+  "/home/carmoma/projects/pollen/results/nuclear1/binresults10",
+  "/home/carmoma/projects/pollen/results/nuclear1/binresults15",
   "/home/carmoma/projects/pollen/results/kraken_dust_mapq6/binresults01",
   "/home/carmoma/projects/pollen/results/kraken_dust_mapq6/binresults05",
   "/home/carmoma/projects/pollen/results/kraken_dust_mapq6/binresults10",
@@ -686,7 +691,7 @@ dirlist <- c(
   "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholds/binresults10",
   "/home/carmoma/projects/pollen/results/mock_ontfilt_nosamfilt/diff_thresholdsc"
              )
-
+dirlist <- dirlist[1:4]
 PERC_LIM <- 0.01
 MIN_PERC_SP <- 0.01
 
@@ -715,9 +720,9 @@ for(resultsdir in dirlist){
   res2write_trim <- res2write[, names(res2write)%in% spnames$Species[spnames$present_mock != "Other (false positive)"]]
   write.table(res2write_trim, "results_matrix_presentonly.csv", sep="\t", row.names = T, quote=F)
 
-  makePvclust(mattemp[["mat"]])
   makeAllHeatmaps(mattemp)
   getDotPlot(res4, mattemp)
+  makePvclust(mattemp[["mat"]])
 
 }
 
@@ -740,5 +745,5 @@ auxsum <- all_res4 %>%
         specificity, sensitivity, PPV, NPV
     ) %>% 
   summarise_all(mean)
-write.table(auxsum, "230101_allsummary3_1percent.csv", sep="\t", quote=F, row.names = F)
+write.table(auxsum, "230115_allsummaryPlastids_1percent.csv", sep="\t", quote=F, row.names = F)
 view(auxsum)
