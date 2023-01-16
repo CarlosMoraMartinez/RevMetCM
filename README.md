@@ -20,7 +20,7 @@ To run in a slurm cluster run the following command with the NextFlow environmen
 sbatch sbatch/sbatch_samples_nuc.cmd
 ```
 
-In case you want to do the read assignment only, go to the directory where the coverage files are, copy the launch_mergepy.sbatch and  and execute:
+In case you want to do the read assignment only, go to the directory where the coverage files are, copy the launch_mergepy.sbatch and merge_coverages scripts and execute:
 
 ```
 cp ../RevMetCM/sbatch/launch_mergepy.sbatch .
@@ -29,7 +29,7 @@ cp ../RevMetCM/scripts/merge_coverages.py .
 for i in $(ls | cut -f 1 -d_ | sort | uniq); do sbatch launch_mergepy.sbatch $i; done
 ```
 
-The downstream analysis was carried out locally with the *scripts/analyze_from_merged.R* R script.
+The downstream analysis was carried out locally with the **scripts/analyze_from_merged.R** R script.
 
 
 ## Input
