@@ -12,4 +12,4 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=carmoma9@gmail.com
 
-nextflow run revmet2.nf -c config/conf_crg_mock_nuclear.config -profile conda -resume -with-report report.html
+nextflow run revmet2.nf -c config/run_mock_cluster.config -profile conda -resume -with-report report.html

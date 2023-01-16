@@ -14,4 +14,4 @@
 
 
 
-nextflow run revmet2.nf -c config/conf_crg_samples_nuc.config -profile conda -resume -with-report report.html
+nextflow run revmet2.nf -c config/run_samples_cluster.config -profile conda -resume -with-report report.html
