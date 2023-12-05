@@ -1,7 +1,7 @@
 include { alignIllumina } from '../modules/align_illumina'
 include { filterIlluminaAlignment } from '../modules/filter_illumina_alignment'
 include { filterDustRegions } from '../modules/filter_dust_regions'
-include { getCoverage } from '../modules/get_cogerage'
+include { getCoverage } from '../modules/get_coverage'
 include { mergeAndBin2species } from '../modules/merge_and_bin_to_species'
 
 
