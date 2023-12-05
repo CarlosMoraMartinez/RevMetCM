@@ -4,6 +4,14 @@ conda config --add channels bioconda
 conda config --add channels conda-forge
 conda config --set channel_priority strict
 
+conda create -y --name basic-env python=3.10
+conda activate basic-env
+conda install -y -c bioconda bedtools samtools
+conda install -y numpy pandas
+
+conda create -y --name filtlong-env python=3.10
+conda activate filtlong-env
+conda install -y -c bioconda filtlong
 
 conda create -y --name fastqc-env python=3.10
 conda activate fastqc-env
@@ -54,7 +62,17 @@ conda install -y -c bioconda seqkit pigz samtools
 
 conda create -y --name minimap2-env python=3.10
 conda activate minimap2-env
-conda install -y -c bioconda minimap2 pigz samtools
+conda install -y -c bioconda minimap2 pigz samtools seqtk
+
+conda create -y --name trimgalore-env python=3.10
+conda activate trimgalore-env
+conda install -y -c bioconda trim-galore #Doesn't work
+sudo apt install trim-galore
+
+#Blast has the dustmasker utility
+conda create -y --name blast-env python=3.10
+conda activate blast-env
+conda install -y -c bioconda blast
 
 ## Add Krakentools to kraken2-env
 #get scripts from github
