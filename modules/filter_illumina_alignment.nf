@@ -1,5 +1,6 @@
 process filterIlluminaAlignment{
   label 'rvm02_smflt'
+  conda params.filterIlluminaAlignment.conda
   cpus params.resources.samtoolsfilter.cpus
   memory params.resources.samtoolsfilter.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
