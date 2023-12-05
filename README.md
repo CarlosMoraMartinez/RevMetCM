@@ -42,6 +42,13 @@ Input directories are indicated in the .config file.
 ## Output
 - *.csv* files with each ONT read assigned to one of the species with short reads. 
 
+## Structure of the repository
+
+Individual processes (e.g., call FastQC, call Kraken2, etc) are in individual files in the **modules/** directory.
+Workflows use a set of related processes (e.g., Trimmomatic -> Bowtie2). Each workflow is in an individual file in the **workflows/** directory.
+
+Configuration files are in **config/**, and **sbatch** files to launch the pipeline in a server are in **sbatch/**. The **scripts/** directory contains the original **sbatch** scripts used to create the pipeline. **scripts2/** contains some useful extra scripts. 
+
 
 ## Software versions used
 
