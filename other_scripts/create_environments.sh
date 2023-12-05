@@ -142,3 +142,6 @@ conda install -c bioconda bioconductor-biocinstaller
 conda create -y --name mash-env python=3.10
 conda activate mash-env
 conda install -y -c bioconda mash
+
+#Needed to print png or pdf DAG
+sudo apt install graphviz

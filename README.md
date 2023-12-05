@@ -11,7 +11,7 @@ Based on the original RevMet pipeline from https://github.com/nedpeel/RevMet
 To run locally use: 
 
 ```
-nextflow run revmet2.nf -c config/config_test.config  -profile conda -resume -with-dag flowchart4.png
+nextflow run revmet2.nf -c config/config_tests.config  -profile conda -resume -with-timeline -with-dag flowchart4.png
 ```
 
 To run in a slurm cluster run the following command with the NextFlow environment active: 
