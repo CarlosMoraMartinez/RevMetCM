@@ -1,5 +1,6 @@
 process getFastaIDs {
   label 'ont03_fids'
+  conda params.getFastaIDs.conda
   cpus params.resources.standard1.cpus
   memory params.resources.standard1.mem
   publishDir "$results_dir/ont03_getFastaIDs", mode: 'symlink'

@@ -1,5 +1,6 @@
 process indexReference {
   label 'ont04_idx'
+  conda params.indexReference.conda
   cpus params.resources.index.cpus
   memory params.resources.index.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }

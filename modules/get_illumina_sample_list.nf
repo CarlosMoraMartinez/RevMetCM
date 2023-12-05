@@ -1,5 +1,6 @@
 process getIlluminaSampleList{
   label 'ilm01_ilslst'
+  conda params.getIlluminaSampleList.conda
   cpus params.resources.standard1.cpus
   memory params.resources.standard1.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }

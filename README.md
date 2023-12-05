@@ -6,7 +6,7 @@ Uses Kraken2 and alignment to a custom fasta database to filter out contaminant/
 
 Based on the original RevMet pipeline from https://github.com/nedpeel/RevMet 
 
-## Pipeline
+## Pipeline overview
 
 ![alt text](https://github.com/CarlosMoraMartinez/RevMetCM/blob/master/pipeline_dag_show.png)
 
@@ -49,9 +49,9 @@ Input directories are indicated in the .config file.
 ## Structure of the repository
 
 Individual processes (e.g., call FastQC, call Kraken2, etc) are in individual files in the **modules/** directory.
-Workflows use a set of related processes (e.g., Trimmomatic -> Bowtie2). Each workflow is in an individual file in the **workflows/** directory.
+Workflows use a set of related processes (e.g., align -> filter alignment -> calculate coverage). Each workflow is in an individual file in the **workflows/** directory.
 
-Configuration files are in **config/**, and **sbatch** files to launch the pipeline in a server are in **sbatch/**. The **scripts/** directory contains the original **sbatch** scripts used to create the pipeline. **scripts2/** contains some useful extra scripts. 
+Configuration files are in **config/**, and **sbatch** files to launch the pipeline in a Slurm server are in **sbatch/**. The **scripts/** directory contains the python script for the last step and the R script used for downstream analysis. **other_scripts/** contains scripts to create the conda environments, and for additional analysis including quantification with MASH.
 
 
 ## Software versions used

@@ -1,5 +1,6 @@
 process alignIllumina {
   label 'rvm01_algn'
+  conda params.alignIllumina.conda
   cpus params.resources.alignment.cpus
   memory params.resources.alignment.mem
   errorStrategy { task.exitStatus in 1..2 ? 'retry' : 'ignore' }
