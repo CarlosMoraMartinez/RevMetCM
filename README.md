@@ -6,6 +6,10 @@ Uses Kraken2 and alignment to a custom fasta database to filter out contaminant/
 
 Based on the original RevMet pipeline from https://github.com/nedpeel/RevMet 
 
+## Pipeline
+
+![alt text](https://github.com/CarlosMoraMartinez/RevMetCM/blob/master/pipeline_dag_show.png)
+
 ## Usage
 
 To run locally use: 
