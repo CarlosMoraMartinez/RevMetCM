@@ -52,9 +52,9 @@ conda create -y --name seqkit-env python=3.10
 conda activate seqkit-env
 conda install -y -c bioconda seqkit pigz samtools
 
-conda create -y --name humann-env python=3.10
-conda activate humann-env
-conda install -y -c bioconda humann
+conda create -y --name minimap2-env python=3.10
+conda activate minimap2-env
+conda install -y -c bioconda minimap2 pigz samtools
 
 ## Add Krakentools to kraken2-env
 #get scripts from github

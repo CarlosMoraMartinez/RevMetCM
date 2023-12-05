@@ -21,7 +21,7 @@ workflow {
   ch_illumina_samplelist = ILLUMINAFASTQ.out.ch_illumina_samplelist
   ch_illumina_processed = ILLUMINAFASTQ.out.ch_illumina_processed
 
-  REVMETCORE(ch_ont, ch_ont_dust, ch_illumina_processed)
+  REVMETCORE(ch_ont_index, ch_ont_dust, ch_illumina_processed)
   ch_merged_results = REVMETCORE.out.ch_merged
     .view{"Final pipeline result: $it"}
   
